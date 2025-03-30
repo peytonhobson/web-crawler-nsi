@@ -1,7 +1,6 @@
 import asyncio
 import os
-import re
-from urllib.parse import urlparse
+import shutil  # Import shutil for directory operations
 from dotenv import load_dotenv
 from crawl4ai import (
     AsyncWebCrawler,
@@ -12,115 +11,11 @@ from crawl4ai import (
 )
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
+from sanitize_filename import sanitize_filename
+from clean_markdown import process_markdown_results
 
 # Load environment variables from .env file
 load_dotenv()
-
-
-def sanitize_filename(url):
-    """Convert URL path to a valid filename."""
-    parsed = urlparse(url)
-    path = parsed.path.strip("/")
-
-    # If path is empty (homepage), use 'home'
-    if not path:
-        return "home"
-
-    # Replace invalid filename characters with underscores
-    path = re.sub(r'[\\/*?:"<>|]', "_", path)
-    # Replace slashes with underscores
-    path = path.replace("/", "_")
-    # Limit filename length
-    if len(path) > 100:
-        path = path[:100]
-
-    return path
-
-
-def remove_duplicate_links(markdown_content):
-    """
-    Remove redundant markdown link lines from content.
-
-    Args:
-        markdown_content (str): Original markdown content
-
-    Returns:
-        str: Processed markdown with redundant links removed
-    """
-    # Regular expression to identify markdown links
-    # Matches both [text](url) and [](url) patterns
-    link_pattern = re.compile(r"^\s*\[.*?\]\(.*?\)\s*$", re.MULTILINE)
-
-    # Split content into lines
-    lines = markdown_content.split("\n")
-    seen_links = set()
-    filtered_lines = []
-
-    for line in lines:
-        # Check if line contains only a markdown link
-        if link_pattern.match(line):
-            # If we've seen this link before, skip it
-            if line in seen_links:
-                continue
-            # Otherwise, add to seen set
-            seen_links.add(line)
-
-        # Add non-redundant lines to result
-        filtered_lines.append(line)
-
-    # Return the filtered content
-    return "\n".join(filtered_lines)
-
-
-def process_markdown_results(results):
-    """
-    Process all crawled results to remove redundant link lines.
-
-    Args:
-        results (list): List of crawler result objects
-
-    Returns:
-        list: Processed results with redundant links removed
-    """
-    processed_results = []
-
-    # First pass: collect all link lines across all documents
-    all_links = set()
-    for result in results:
-        if not hasattr(result, "markdown") or not result.markdown:
-            continue
-
-        # Find all markdown link lines
-        link_pattern = re.compile(r"^\s*\[.*?\]\(.*?\)\s*$", re.MULTILINE)
-        links = link_pattern.findall(result.markdown)
-
-        # Add to global set
-        all_links.update(links)
-
-    # Second pass: remove redundant links from each document
-    for result in results:
-        if not hasattr(result, "markdown") or not result.markdown:
-            processed_results.append(result)
-            continue
-
-        # Split content into lines
-        lines = result.markdown.split("\n")
-        filtered_lines = []
-
-        for line in lines:
-            # If line is a known link and not the first occurrence, skip it
-            if line in all_links:
-                all_links.remove(line)  # Keep first occurrence, remove others
-                filtered_lines.append(line)
-            else:
-                # Not a markdown link or already processed, keep the line
-                filtered_lines.append(line)
-
-        # Update the markdown content
-        result.markdown = "\n".join(filtered_lines)
-        processed_results.append(result)
-
-    return processed_results
 
 
 async def main():
@@ -133,6 +28,7 @@ async def main():
 
     # Configuration for OpenAI model
     openai_config = LLMConfig(
+        # TODO: Experiment with other models
         provider="openai/gpt-4o-mini",
         api_token=os.environ.get("OPENAI_API_KEY"),
     )
@@ -179,11 +75,19 @@ async def main():
 
     # Create a directory for the markdown files if it doesn't exist
     output_dir = "winery_content"
+
+    # Delete the output directory if it exists
+    if os.path.exists(output_dir):
+        print(f"Removing existing '{output_dir}' directory...")
+        shutil.rmtree(output_dir)
+
+    # Create a fresh directory
+    print(f"Creating new '{output_dir}' directory...")
     os.makedirs(output_dir, exist_ok=True)
 
     # Crawler configuration
     config = CrawlerRunConfig(
-        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=1, include_external=False),
+        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=2, include_external=False),
         scraping_strategy=LXMLWebScrapingStrategy(),
         markdown_generator=md_generator,
         excluded_tags=["footer", "nav"],
