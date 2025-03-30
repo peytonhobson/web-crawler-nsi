@@ -1,0 +1,79 @@
+# Environment variables and secrets
+.env
+*.env
+.env.*
+
+# API keys and sensitive data
+*api_key*
+*apikey*
+*secret*
+*password*
+*credential*
+
+# Crawler output
+page_*.md
+page_*.html
+raw_page_*.html
+*_cleaned.md
+cleaned_output/
+crawled_pages/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+crawl4ai-env/
+.env/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+*.sublime*
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+temp/
+tmp/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS specific
+Thumbs.db
+.DS_Store
+desktop.ini
