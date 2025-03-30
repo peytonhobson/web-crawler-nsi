@@ -17,6 +17,7 @@ raw_page_*.html
 *_cleaned.md
 cleaned_output/
 crawled_pages/
+winery_content/
 
 # Python
 __pycache__/
