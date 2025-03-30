@@ -37,7 +37,7 @@ async def main():
     content_filter = LLMContentFilter(
         llm_config=openai_config,
         instruction="""
-        You are an assistant who is an expert at extracting content from winery 
+        You are an assistant who is an expert at filtering content extracted from winery 
         websites. You are given a page from a winery website.
         Your task is to extract ONLY substantive content that provides real 
         value to customers visiting the winery website. The purpose of the 
@@ -87,7 +87,7 @@ async def main():
 
     # Crawler configuration
     config = CrawlerRunConfig(
-        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=2, include_external=False),
+        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=3, include_external=False),
         scraping_strategy=LXMLWebScrapingStrategy(),
         markdown_generator=md_generator,
         excluded_tags=["footer", "nav"],
@@ -96,6 +96,38 @@ async def main():
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=True,
+        js_code=[
+            """
+            (async () => {
+                // Function to check if an element is hidden
+                function isElementHidden(el) {
+                    const style = window.getComputedStyle(el);
+                    
+                    // Direct check for display and visibility
+                    if (style.display === 'none' || style.visibility === 'hidden') {
+                        return true;
+                    }
+                    
+                    // Check for hidden attribute
+                    if (el.getAttribute('hidden') !== null || el.getAttribute('aria-hidden') === 'true') {
+                        return true;
+                    }
+                    
+                    return false;
+                }
+                
+                // Process all elements within the body only
+                if (document.body) {
+                    const elements = document.body.querySelectorAll('*');
+                    for (let el of elements) {
+                        if (isElementHidden(el)) {
+                            el.remove();
+                        }
+                    }
+                }
+            })();
+            """
+        ],
     )
 
     async with AsyncWebCrawler() as crawler:
