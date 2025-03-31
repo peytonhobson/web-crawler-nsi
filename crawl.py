@@ -46,7 +46,7 @@ async def main():
         
         Include:
         - Any details relevant to a customer visiting the winery website.
-        - This could include product details, events, details about the winery.
+        - This could include product details, events, prices, full list of amenities, and other details about the winery.
         
         Exclude
         - Repeated links such as those in headers and nav sections.
@@ -56,6 +56,7 @@ async def main():
         - Shopping cart elements
         - Generic welcome messages with no specific information
         - Breadcrumbs and pagination elements
+        - Header and footer sections that do not contain substantive information
 
         FORMAT REQUIREMENTS:
         - Use clear, hierarchical headers (H1, H2, H3)
@@ -150,6 +151,11 @@ async def main():
         saved_count = 0
         for result in processed_pages:
             try:
+                # Skip empty markdown files
+                if not result.markdown or result.markdown.isspace():
+                    print(f"Skipping empty content for {result.url}")
+                    continue
+                    
                 # Generate filename based on URL path
                 page_path = sanitize_filename(result.url)
                 filename = f"{output_dir}/{page_path}.md"
