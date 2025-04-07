@@ -28,22 +28,25 @@ CUSTOMER_ID=your_customer_id
 
 1. Run the crawler:
 ```bash
-python crawl.py
+python main.py --crawler
 ```
 
 2. Process and upload to Pinecone:
 ```bash
-python upload_to_pinecone.py
+python main.py --upload
 ```
 
 For dry run mode (process but don't upload):
 ```bash
-python upload_to_pinecone.py --dry
+python main.py --upload --dry
 ```
 
 ## Project Structure
 
-- `crawl.py`: Main crawler script
-- `clean_markdown.py`: Markdown processing utilities
-- `sanitize_filename.py`: Filename sanitization utilities
-- `upload_to_pinecone.py`: Pinecone upload script 
+- `main.py`: Main entry point for running crawler and upload processes
+- `crawler/`: Directory containing crawler-related files
+  - `crawl.py`: Main crawler script
+  - `clean_markdown.py`: Markdown processing utilities
+  - `sanitize_filename.py`: Filename sanitization utilities
+- `vectordb/`: Directory containing vector database related files
+  - `upload_to_pinecone.py`: Pinecone upload script 
