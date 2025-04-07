@@ -85,3 +85,7 @@ chunked_content/
 vector_chunks/
 embeddings/
 pinecone_data/
+
+# Project specific
+crawler/winery_content/
+vectordb/processed_content/
