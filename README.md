@@ -11,6 +11,7 @@ This project implements a web crawler that processes content and stores it in a 
 - Namespace-based content organization
 - Duplicate detection and handling
 - Robust error handling and logging
+- Automated orchestration of crawling and vector database updates
 
 ## Prerequisites
 
@@ -48,22 +49,63 @@ See `.env.example` for detailed configuration options. Key variables include:
 
 ## Usage
 
+### Automated Process (Recommended)
+
+The orchestrator script (`orchestrator.py`) provides a seamless way to run the entire pipeline:
+
+```bash
+python orchestrator.py
+```
+
+This will:
+1. Run the crawler to fetch website content
+2. Process and chunk the content
+3. Generate embeddings
+4. Upload to Pinecone with rich metadata
+
+The orchestrator includes:
+- Automatic logging to `logs/orchestrator_[timestamp].log`
+- Error handling and recovery
+- Progress tracking
+- Namespace management
+- Metadata enrichment
+
+### Manual Process
+
+If you prefer to run the steps separately:
+
 1. Run the crawler:
 ```bash
-python crawler/main.py
+python crawler/crawl.py
 ```
 
 2. Process and upload content:
 ```bash
-python process_and_upload.py
+python vectordb/upload_to_pinecone_v2.py
 ```
 
 ## Vector Database Structure
 
+Each record in Pinecone includes:
+
+### Core Metadata
+- Source information (URL, domain, path)
+- Content information (text, keywords, token count)
+- Chunk information (ID, index, name)
+- Tracking information (timestamps, batch ID)
+- Customer information
+
+### Namespace Organization
 - Each customer's content is stored in a dedicated namespace
 - Namespace format: `web_crawl_{CUSTOMER_ID}`
 - Vector IDs include chunk information to prevent duplicates
 - Metadata includes source URL, timestamp, and content information
+
+### Content Processing
+- Text is chunked with configurable overlap
+- Keywords are automatically extracted
+- Content is filtered for relevance
+- Duplicates are detected and handled
 
 ## Error Handling
 
@@ -81,6 +123,11 @@ Detailed logging is implemented for:
 - Content processing
 - Vector uploads
 - Error tracking
+
+Logs are stored in the `logs` directory with timestamps:
+- Crawler logs: `logs/crawler_[timestamp].log`
+- Upload logs: `logs/upload_[timestamp].log`
+- Orchestrator logs: `logs/orchestrator_[timestamp].log`
 
 ## Contributing
 

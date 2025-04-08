@@ -148,11 +148,27 @@ class PineconeUploader:
                 "id": vector_id,
                 "values": [0.1] * 1024,  # Placeholder vector
                 "metadata": {
+                    # Source information
                     "url": metadata["url"],
                     "title": metadata["title"],
+                    "source_domain": metadata.get("source_domain", ""),
+                    "source_path": metadata.get("source_path", ""),
+                    # Content information
                     "text": record["chunk_text"],
+                    "keywords": metadata.get("keywords", []),
+                    "token_count": metadata.get("token_count", 0),
+                    # Chunk information
+                    "chunk_id": metadata["chunk_id"],
                     "chunk_index": metadata["chunk_index"],
                     "total_chunks": metadata["total_chunks"],
+                    "chunk_name": metadata.get("chunk_name", ""),
+                    # Tracking information
+                    "crawl_timestamp": metadata.get("crawl_timestamp", ""),
+                    "upload_timestamp": metadata["upload_timestamp"],
+                    "batch_id": metadata["batch_id"],
+                    "source_type": metadata["source_type"],
+                    # Customer information
+                    "customer_id": metadata.get("customer_id", ""),
                 },
             }
             vector_records.append(vector_record)
