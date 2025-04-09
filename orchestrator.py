@@ -26,6 +26,10 @@ async def run_crawler():
         from crawler.crawl import main as run_crawler
 
         output_dir = await run_crawler()
+        if output_dir is None:
+            logger.error("Crawler failed to return output directory")
+            raise RuntimeError("Crawler failed to return output directory")
+
         logger.info(f"Crawler completed successfully. Output directory: {output_dir}")
         return output_dir
     except Exception as e:
