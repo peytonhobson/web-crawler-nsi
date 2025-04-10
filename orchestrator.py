@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 from crawler.crawl import crawl
+from chunk_content import chunk_content
 from summary import summarize_content
 
 # Configure logging
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main(dry_run=False):
-    """Main orchestrator function that runs crawler, summarization,
+    """Main orchestrator function that runs crawler, chunking, summarization,
     and Pinecone upload in sequence."""
     try:
         # Load environment variables
@@ -40,9 +41,14 @@ async def main(dry_run=False):
         crawling_results = await crawl()
         logger.info(f"Crawling completed with {len(crawling_results)} results")
 
-        # Run summarization with the crawl results directly
+        # Run content chunking on the crawl results
+        logger.info("Starting content chunking...")
+        chunked_results = chunk_content(crawling_results)
+        logger.info(f"Chunking completed with {len(chunked_results)} chunks")
+
+        # Run summarization with the chunk results
         logger.info("Starting content summarization...")
-        summarized_results = summarize_content(crawling_results)
+        summarized_results = summarize_content(chunked_results)
         results_count = len(summarized_results)
         logger.info(f"Summarization completed with {results_count} results")
 
@@ -78,7 +84,8 @@ def save_results_to_folder(results):
         # Save each result to a separate markdown file
         for i, result in enumerate(results):
             # Create a sanitized filename based on the URL
-            filename = f"{result..md"
+            url_part = result.url.split("//")[-1].replace("/", "_")
+            filename = f"{i+1}_{url_part}.md"
             file_path = output_dir / filename
 
             # Write the markdown content to the file
