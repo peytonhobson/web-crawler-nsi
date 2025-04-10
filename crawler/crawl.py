@@ -1,6 +1,4 @@
-import asyncio
 import os
-import shutil
 import hashlib
 from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
@@ -13,11 +11,6 @@ from crawl4ai import (
     DefaultMarkdownGenerator,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-import subprocess
-import sys
-
-# Add the parent directory to Python path so we can import from crawler
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from crawler.sanitize_filename import sanitize_filename
 from crawler.clean_markdown import process_markdown_results
 
@@ -25,19 +18,16 @@ from crawler.clean_markdown import process_markdown_results
 load_dotenv()
 
 
-def canonicalize_url(url):
-    """Normalize a URL to avoid trivial duplicates (e.g., trailing slashes)."""
-    parsed = urlparse(url)
-    path = parsed.path.rstrip("/")
-    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+async def crawl():
+    """
+    Crawl winery websites, process content, and return processed results.
 
+    Args:
+        run_chunking (bool): Whether to run the chunking process after crawling.
 
-def get_content_hash(content):
-    """Generate a SHA256 hash for deduplication of content."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
-async def main():
+    Returns:
+        list: Processed content results with duplicates removed.
+    """
     if "OPENAI_API_KEY" not in os.environ:
         print("⚠️  OPENAI_API_KEY environment variable is not set.")
         return None
@@ -54,8 +44,8 @@ async def main():
         from winery websites. You are given a page from a winery website.
         Your task is to extract ONLY substantive content that provides real 
         value to customers visiting the winery website.
-        The purpose of the content is to help customers learn about the winery and its products 
-        by using it as RAG for a chatbot.
+        The purpose of the content is to help customers learn about the winery 
+        and its products by using it as RAG for a chatbot.
         
         FORMAT REQUIREMENTS:
         - Use clear, hierarchical headers (H1, H2, H3) for each section
@@ -66,7 +56,8 @@ async def main():
         - Remove standalone links without context
         - Combine related content into cohesive paragraphs
         - Remove any text that appears to be part of the website's navigation
-        - Ensure ALL links preserved have real informational value and aren't just navigation
+        - Ensure ALL links preserved have real informational value and aren't 
+          just navigation
         
         Include:
         - Detailed descriptions of the winery's history, mission, and values
@@ -108,55 +99,25 @@ async def main():
 
     md_generator = DefaultMarkdownGenerator(content_filter=content_filter)
 
-    base_output_dir = "crawler/winery_content"
-    if os.path.exists(base_output_dir):
-        print(f"Removing existing '{base_output_dir}' directory...")
-        shutil.rmtree(base_output_dir)
-    print("Creating new output directory...")
-    os.makedirs(base_output_dir, exist_ok=True)
-
     deep_crawl = BFSDeepCrawlStrategy(max_depth=3, include_external=False)
     config = CrawlerRunConfig(
         deep_crawl_strategy=deep_crawl,
         scraping_strategy=LXMLWebScrapingStrategy(),
         markdown_generator=md_generator,
+        # TODO: Add to config
         excluded_tags=["footer", "nav"],
         exclude_external_links=True,
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=True,
-        js_code=[
-            """
-            (async () => {
-                function isElementHidden(el) {
-                    const style = window.getComputedStyle(el);
-                    if (style.display === 'none' || 
-                        style.visibility === 'hidden') {
-                        return true;
-                    }
-                    if (el.getAttribute('hidden') !== null || 
-                        el.getAttribute('aria-hidden') === 'true') {
-                        return true;
-                    }
-                    return false;
-                }
-                if (document.body) {
-                    const elements = document.body.querySelectorAll('*');
-                    for (let el of elements) {
-                        if (isElementHidden(el)) {
-                            el.remove();
-                        }
-                    }
-                }
-            })();
-            """
-        ],
+        js_code=[get_hidden_elements_removal_js()],
     )
 
     global_content_hashes = set()
     global_canonical_urls = set()
 
     all_results = []
+    # TODO: Add to config
     starting_urls = [
         "https://www.westhillsvineyards.com/wines",
     ]
@@ -173,10 +134,10 @@ async def main():
 
                 # Get the filename from the URL to provide context
                 page_path = sanitize_filename(url)
-                filename = f"{page_path}.md"
 
-                # Add filename context to the content filter
-                content_filter.context = f"Processing content for file: {filename}\n"
+                # Add page context to the content filter
+                context_str = f"Processing content for page: {page_path}\n"
+                content_filter.context = context_str
 
                 results = await crawler.arun(url, config=config)
                 all_results.extend(results)
@@ -188,13 +149,14 @@ async def main():
 
     valid_pages = [res for res in all_results if res.status_code == 200]
 
-    print("Post-processing results to remove redundant links...")
+    print("Post-processing results to remove links...")
     processed_pages = process_markdown_results(valid_pages)
 
-    print("\n📄 Saving original filtered content...")
-    saved_count = 0
+    # Filter out empty or duplicate content
+    final_results = []
     for res in processed_pages:
         try:
+            # Skip empty content
             if not res.markdown or res.markdown.isspace():
                 print(f"Skipping empty content for {res.url}")
                 continue
@@ -203,33 +165,63 @@ async def main():
             if content_hash in global_content_hashes:
                 print(f"Duplicate content detected for {res.url}")
                 continue
+
             global_content_hashes.add(content_hash)
 
-            page_path = sanitize_filename(res.url)
-            filename = os.path.join(base_output_dir, f"{page_path}.md")
+            # Add metadata to the result object
+            res.page_path = sanitize_filename(res.url)
+            res.content_hash = content_hash
 
-            # Add filename as first line of content
-            content_with_filename = f"# {page_path}\n\n{res.markdown}"
+            final_results.append(res)
 
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(content_with_filename)
-            print(f"Saved: {filename} (URL: {res.url})")
-            saved_count += 1
         except Exception as e:
-            print(f"❌ Failed to save page {res.url} due to: {e}")
+            print(f"❌ Failed to process page {res.url} due to: {e}")
             continue
 
-    print("\n✅ Crawling complete!")
-    print(f"- Crawled and processed {saved_count} pages")
-    print(f"- Files are in '{base_output_dir}' directory")
+    print(f"\n✅ Crawling complete! Processed {len(final_results)} unique pages")
 
-    # Call chunk_only.py to handle chunking
-    print("\n🔪 Starting chunking process...")
-    chunk_script = os.path.join(os.path.dirname(__file__), "chunk_only.py")
-    subprocess.run([sys.executable, chunk_script])
-
-    return base_output_dir  # Return the output directory
+    return final_results  # Return the processed results
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+def canonicalize_url(url):
+    """Normalize a URL to avoid trivial duplicates (e.g., trailing slashes)."""
+    parsed = urlparse(url)
+    path = parsed.path.rstrip("/")
+    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+
+
+def get_content_hash(content):
+    """Generate a SHA256 hash for deduplication of content."""
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def get_hidden_elements_removal_js():
+    """Return JavaScript code that removes hidden elements from the DOM.
+
+    This script runs in the browser context and removes elements that are
+    hidden via CSS or HTML attributes to clean up the page before scraping.
+    """
+    return """
+    (async () => {
+        function isElementHidden(el) {
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || 
+                style.visibility === 'hidden') {
+                return true;
+            }
+            if (el.getAttribute('hidden') !== null || 
+                el.getAttribute('aria-hidden') === 'true') {
+                return true;
+            }
+            return false;
+        }
+        if (document.body) {
+            const elements = document.body.querySelectorAll('*');
+            for (let el of elements) {
+                if (isElementHidden(el)) {
+                    el.remove();
+                }
+            }
+        }
+    })();
+    """

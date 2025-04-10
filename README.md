@@ -120,6 +120,12 @@ For managing your virtual environment:
   # venv\Scripts\activate   # On Windows
   ```
 
+- **Development Mode Install**: Install the project in development mode
+  ```bash
+  pip install -e .
+  ```
+  This allows you to import modules from anywhere in the codebase without path manipulation
+
 - **Updating dependencies**: If requirements.txt changes, update your environment
   ```bash
   pip install -r requirements.txt

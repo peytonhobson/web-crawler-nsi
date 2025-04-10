@@ -8,14 +8,10 @@ summaries to useful chunks.
 """
 
 import os
-import sys
 import glob
 import concurrent.futures
 from dotenv import load_dotenv
 from openai import OpenAI
-
-# Add the parent directory to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load environment variables
 load_dotenv()
@@ -26,6 +22,32 @@ TEMPERATURE = 0.3
 MAX_TOKENS = 800
 MAX_WORKERS = 10
 
+# TODO: We need to make this generic for all sites
+system_prompt = """
+You are an expert at evaluating content.
+Your task is to ONLY delete content that is "completely useless".
+ALWAYS KEEP content unless it is:
+- Completely empty
+- Only navigation links with no text
+- Only social media buttons/links
+- Only generic 'Contact Us' or 'Menu' text
+
+For all other content, even if minimal:
+- Keep the content
+- Generate a SINGLE SENTENCE summary that describes the overall topic/purpose of the chunk
+- Focuses on what information the chunk contains
+- Avoids listing specific items from the content
+- Uses precise terminology for RAG retrieval
+- Includes key descriptive words not in content
+
+Format response as:
+KEEP
+[Single-sentence summary]
+[Content]
+or
+DELETE
+"""
+
 
 def process_chunk_content(content, client):
     """Process chunk content and determine if it should be kept."""
@@ -33,36 +55,7 @@ def process_chunk_content(content, client):
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert at evaluating content.\n"
-                        "Your task is to ONLY delete content that is "
-                        "completely useless.\n\n"
-                        "ALWAYS KEEP content unless it is:\n"
-                        "- Completely empty\n"
-                        "- Only navigation links with no text\n"
-                        "- Only social media buttons/links\n"
-                        "- Only generic 'Contact Us' or 'Menu' text\n\n"
-                        "For all other content, even if minimal:\n"
-                        "1. Keep the content\n"
-                        "2. Generate a SINGLE SENTENCE summary that:\n"
-                        "   - Describes the overall topic/purpose of the chunk\n"
-                        "   - Focuses on what information the chunk contains\n"
-                        "   - Avoids listing specific items from the content\n"
-                        "   - Uses precise terminology for RAG retrieval\n"
-                        "   - Includes key descriptive words not in content\n"
-                        "     if they would aid retrieval (e.g. if content\n"
-                        "     lists items, add descriptive category words)\n"
-                        "3. Return 'KEEP' followed by summary and content\n\n"
-                        "Format response as:\n"
-                        "KEEP\n"
-                        "[Single-sentence summary]\n"
-                        "[Content]\n"
-                        "or\n"
-                        "DELETE"
-                    ),
-                },
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": f"Process this content:\n\n{content}",
@@ -139,7 +132,7 @@ def process_file(md_file, client):
         return "error"
 
 
-def process_chunks(chunks_dir):
+def sumarrize_chunks(chunks_dir):
     """Process all chunks in the directory concurrently."""
     md_files = glob.glob(os.path.join(chunks_dir, "*.md"))
     print(f"Found {len(md_files)} chunks to process")
@@ -167,17 +160,3 @@ def process_chunks(chunks_dir):
     print("\nProcessing complete:")
     print(f"- Kept {kept_count} chunks with useful content")
     print(f"- Deleted {deleted_count} chunks with no useful content")
-
-
-def main():
-    if "OPENAI_API_KEY" not in os.environ:
-        print("⚠️  OPENAI_API_KEY environment variable is not set.")
-        return
-
-    # Process chunks
-    chunks_dir = "crawler/winery_content/chunks"
-    process_chunks(chunks_dir)
-
-
-if __name__ == "__main__":
-    main()
