@@ -130,62 +130,6 @@ class PineconeUploader:
         sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", ascii_str)
         return sanitized
 
-    def build_vector_records(
-        self, records: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Build vector records for Pinecone upsert.
-        Since integrated inference is not available, we'll store text in metadata
-        and use placeholder vectors until we implement proper embedding.
-        """
-        vector_records = []
-        seen_ids = set()
-        for record in records:
-            metadata = record["metadata"]
-            # Include batch_id in the vector ID prefix for easier deletion
-            base_id = f"web_crawl_{self.batch_id}_{metadata['url']}"
-            base_id = self.sanitize_vector_id(base_id)
-            vector_id = f"{base_id}_chunk_{metadata['chunk_index']}"
-
-            if vector_id in seen_ids:
-                logger.warning(f"Duplicate vector ID found: {vector_id}")
-            else:
-                seen_ids.add(vector_id)
-
-            vector_record = {
-                "id": vector_id,
-                "values": [0.1] * 1024,  # Placeholder vector
-                "metadata": {
-                    # Source information
-                    "url": metadata["url"],
-                    "title": metadata["title"],
-                    "source_domain": metadata.get("source_domain", ""),
-                    "source_path": metadata.get("source_path", ""),
-                    # Content information
-                    "text": record["chunk_text"],
-                    "keywords": metadata.get("keywords", []),
-                    "token_count": metadata.get("token_count", 0),
-                    # Chunk information
-                    "chunk_id": metadata["chunk_id"],
-                    "chunk_index": metadata["chunk_index"],
-                    "total_chunks": metadata["total_chunks"],
-                    "chunk_name": metadata.get("chunk_name", ""),
-                    # Tracking information
-                    "crawl_timestamp": metadata.get("crawl_timestamp", ""),
-                    "upload_timestamp": metadata["upload_timestamp"],
-                    "batch_id": metadata["batch_id"],
-                    "source_type": metadata["source_type"],
-                    # Customer information
-                    "customer_id": metadata.get("customer_id", ""),
-                },
-            }
-            vector_records.append(vector_record)
-            logger.debug(f"Created vector record with ID: {vector_id}")
-        logger.info(
-            f"Created {len(vector_records)} vector records, {len(seen_ids)} unique IDs"
-        )
-        return vector_records
-
     def prepare_records(self, chunks_dir: str) -> List[Dict[str, Any]]:
         """
         Scans the provided directory for markdown chunk files and builds a list of records.
@@ -221,17 +165,50 @@ class PineconeUploader:
 
     def upsert_records(self, records: List[Dict[str, Any]]) -> int:
         """
-        Upserts the provided records to the Pinecone index within the dedicated web namespace.
-        Uses integrated inference by sending text in the "text" field.
+        Upserts the provided records to the Pinecone index using server-side embedding.
+        Uses the upsert_records method which handles text-to-vector conversion on Pinecone's side.
         """
         try:
             logger.info(
-                f"Upserting {len(records)} records into namespace: "
                 f"Upserting {len(records)} records into namespace: {self.web_namespace}"
             )
-            vectors = self.build_vector_records(records)
-            # Use the standard upsert method
-            self.index.upsert(vectors=vectors, namespace=self.web_namespace)
+
+            # Format records for upsert_records
+            formatted_records = []
+            for record in records:
+                metadata = record["metadata"]
+                # Create a record with ID and text field for embedding
+                formatted_record = {
+                    # Provide ID directly as a field
+                    "_id": self.sanitize_vector_id(
+                        f"web_crawl_{self.batch_id}_{metadata['chunk_id']}"
+                    ),
+                    # Text to be embedded - assuming "chunk_text" is the field mapped for embedding
+                    "chunk_text": record["chunk_text"],
+                    # Additional metadata
+                    "url": metadata["url"],
+                    "title": metadata["title"],
+                    "source_domain": metadata.get("source_domain", ""),
+                    "source_path": metadata.get("source_path", ""),
+                    "keywords": metadata.get("keywords", []),
+                    "token_count": metadata.get("token_count", 0),
+                    "chunk_id": metadata["chunk_id"],
+                    "chunk_index": metadata["chunk_index"],
+                    "total_chunks": metadata["total_chunks"],
+                    "chunk_name": metadata.get("chunk_name", ""),
+                    "crawl_timestamp": metadata.get("crawl_timestamp", ""),
+                    "upload_timestamp": metadata["upload_timestamp"],
+                    "batch_id": metadata["batch_id"],
+                    "source_type": metadata["source_type"],
+                    "customer_id": metadata.get("customer_id", ""),
+                }
+                formatted_records.append(formatted_record)
+
+            # Use upsert_records which handles server-side embedding
+            self.index.upsert_records(
+                namespace=self.web_namespace, records=formatted_records
+            )
+
             logger.info("Upsert operation completed successfully")
             return len(records)
         except Exception as e:

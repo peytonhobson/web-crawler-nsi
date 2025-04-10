@@ -113,6 +113,8 @@ def main():
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            # No filtering, just take the content as-is
+
             # Extract title from content (first line with # if exists)
             page_title = "Unknown"
             for line in content.splitlines():
@@ -190,7 +192,7 @@ def main():
 
             # Save chunk content
             with open(filename, "w", encoding="utf-8") as f:
-                f.write(chunk.page_content)
+                f.write(chunk.page_content)  # Save the actual content
 
             # Save metadata
             metadata_filename = f"{base_filename}_metadata.json"
