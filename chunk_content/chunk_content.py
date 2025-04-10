@@ -47,6 +47,7 @@ def chunk_content(crawl_results):
                 page_content=content,
                 metadata={
                     "url": url,
+                    "page_path": result.page_path,
                 },
             )
             docs.append(doc)

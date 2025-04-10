@@ -103,6 +103,8 @@ def process_chunk(chunk):
         cleaned_content, summary = process_chunk_content(content, client)
 
         if summary == "DELETE":
+            print(content)
+            print(cleaned_content)
             print(f"Marked for deletion: chunk from {url} - no useful content")
             return "deleted", None
         else:
@@ -168,8 +170,6 @@ def process_chunk_content(content, client):
         cleaned_content = "\n".join(lines[2:]).strip()
 
         # Ensure summary format
-        if not summary.startswith("This chunk covers"):
-            summary = f"This chunk covers {summary}"
         if not summary.endswith("."):
             summary = f"{summary}."
 

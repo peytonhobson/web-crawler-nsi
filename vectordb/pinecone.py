@@ -20,8 +20,6 @@ Usage:
 import os
 import sys
 import glob
-import json
-import argparse
 import logging
 import uuid
 import time
@@ -30,7 +28,6 @@ from typing import List, Dict, Any, Tuple
 import re
 from dotenv import load_dotenv
 from pinecone import Pinecone  # Updated import for Pinecone SDK v6+
-from pathlib import Path
 import unicodedata
 
 # Configure logging
@@ -39,32 +36,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def read_markdown_and_metadata(file_path: str) -> Tuple[Dict[str, Any], str]:
-    """
-    Reads the markdown file content and the companion JSON metadata if available.
-
-    Args:
-        file_path: Path to the markdown file.
-
-    Returns:
-        A tuple (metadata, content) where metadata is a dictionary (empty if missing)
-        and content is the markdown text.
-    """
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # Expect companion metadata file with same name, replacing ".md" with "_metadata.json"
-    metadata_path = re.sub(r"\.md$", "_metadata.json", file_path)
-    metadata = {}
-    if os.path.exists(metadata_path):
-        try:
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
-            logger.info(f"Loaded metadata from {metadata_path}")
-        except Exception as e:
-            logger.warning(f"Could not load metadata from {metadata_path}: {e}")
-    return metadata, content
+CHUNK_ID_PREFIX = "web_crawl"
 
 
 class PineconeUploader:
@@ -76,43 +48,28 @@ class PineconeUploader:
     def __init__(
         self,
         api_key: str,
-        environment: str,
         index_name: str,
-        customer_id: str,
-        index_host: str = None,
     ):
         """
         Initializes the uploader and connects to the correct Pinecone index.
         """
         self.api_key = api_key
-        self.environment = environment
         self.index_name = index_name
-        self.customer_id = customer_id
         self.web_namespace = ""  # Use default namespace
-        self.batch_id = f"batch_{uuid.uuid4().hex}"
-
-        self.index_host = index_host
 
         # Initialize the Pinecone client
         self.pc = Pinecone(api_key=self.api_key)
 
         # Add diagnostic logging
         logger.info(f"Initializing Pinecone client with index: {index_name}")
-        logger.info(f"Using environment: {environment}")
-        if index_host:
-            logger.info(f"Using custom host: {index_host}")
 
         # Connect to the index
-        if self.index_host:
-            logger.info(f"Connecting to index using host: {self.index_host}")
-            self.index = self.pc.Index(self.index_name, host=self.index_host)
-        else:
-            try:
-                self.index = self.pc.Index(self.index_name)
-                logger.info(f"Connected to index: {self.index_name}")
-            except Exception as e:
-                logger.error(f"Failed to connect to index: {e}")
-                raise
+        try:
+            self.index = self.pc.Index(self.index_name)
+            logger.info(f"Connected to index: {self.index_name}")
+        except Exception as e:
+            logger.error(f"Failed to connect to index: {e}")
+            raise
 
         # Verify index connection
         try:
@@ -129,39 +86,6 @@ class PineconeUploader:
         ascii_str = normalized.encode("ASCII", "ignore").decode("ASCII")
         sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", ascii_str)
         return sanitized
-
-    def prepare_records(self, chunks_dir: str) -> List[Dict[str, Any]]:
-        """
-        Scans the provided directory for markdown chunk files and builds a list of records.
-        Each record is tagged with the current batch_id and upload timestamp.
-        """
-        record_list = []
-        md_files = glob.glob(os.path.join(chunks_dir, "*.md"))
-        if not md_files:
-            logger.warning(f"No markdown files found in directory: {chunks_dir}")
-            return []
-        current_time = datetime.now().isoformat()
-        for md_file in md_files:
-            try:
-                metadata, content = read_markdown_and_metadata(md_file)
-                if "chunk_id" not in metadata:
-                    metadata["chunk_id"] = os.path.splitext(os.path.basename(md_file))[
-                        0
-                    ]
-                metadata["batch_id"] = self.batch_id
-                metadata["upload_timestamp"] = current_time
-                metadata["source_type"] = "web_crawl"
-                record = {
-                    "id": metadata["chunk_id"],
-                    "chunk_text": content,
-                    "metadata": metadata,
-                }
-                record_list.append(record)
-                logger.info(f"Prepared record for file: {md_file}")
-            except Exception as e:
-                logger.error(f"Error processing file {md_file}: {e}")
-                continue
-        return record_list
 
     def upsert_records(self, records: List[Dict[str, Any]]) -> int:
         """
@@ -181,26 +105,13 @@ class PineconeUploader:
                 formatted_record = {
                     # Provide ID directly as a field
                     "_id": self.sanitize_vector_id(
-                        f"web_crawl_{self.batch_id}_{metadata['chunk_id']}"
+                        f"{CHUNK_ID_PREFIX}_{metadata["chunk_name"]}"
                     ),
-                    # Text to be embedded - assuming "chunk_text" is the field mapped for embedding
+                    # Text to be embedded
                     "chunk_text": record["chunk_text"],
                     # Additional metadata
                     "url": metadata["url"],
-                    "title": metadata["title"],
-                    "source_domain": metadata.get("source_domain", ""),
-                    "source_path": metadata.get("source_path", ""),
-                    "keywords": metadata.get("keywords", []),
-                    "token_count": metadata.get("token_count", 0),
-                    "chunk_id": metadata["chunk_id"],
-                    "chunk_index": metadata["chunk_index"],
-                    "total_chunks": metadata["total_chunks"],
-                    "chunk_name": metadata.get("chunk_name", ""),
-                    "crawl_timestamp": metadata.get("crawl_timestamp", ""),
                     "upload_timestamp": metadata["upload_timestamp"],
-                    "batch_id": metadata["batch_id"],
-                    "source_type": metadata["source_type"],
-                    "customer_id": metadata.get("customer_id", ""),
                 }
                 formatted_records.append(formatted_record)
 
@@ -336,58 +247,20 @@ class PineconeUploader:
             raise
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Upload and update Pinecone records from web-crawled content chunks."
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Process and prepare records, but do not perform any upsert or delete operations",
-    )
-    parser.add_argument(
-        "--input-dir",
-        type=str,
-        default="crawler/winery_content",
-        help="Directory containing the web crawl content (expects a 'chunks' subdirectory)",
-    )
-    parser.add_argument(
-        "--delete-date",
-        type=str,
-        default="yesterday",
-        help="Date to delete in YYYYMMDD format. Use 'yesterday' for yesterday's date, or 'none' to skip deletion",
-    )
-    parser.add_argument(
-        "--keep-recent",
-        type=int,
-        default=1,
-        help="Number of most recent crawls to keep (default: 1). Older crawls will be deleted.",
-    )
-    args = parser.parse_args()
-
+def main(chunks):
     load_dotenv()
     # Validate required environment variables.
-    required_vars = ["PINECONE_API_KEY", "CUSTOMER_ID", "PINECONE_INDEX_NAME"]
+    required_vars = ["PINECONE_API_KEY", "PINECONE_INDEX_NAME"]
     missing = [var for var in required_vars if not os.getenv(var)]
     if missing:
         logger.error(f"Missing environment variables: {', '.join(missing)}")
         sys.exit(1)
 
     api_key = os.getenv("PINECONE_API_KEY")
-    customer_id = os.getenv("CUSTOMER_ID")
-    environment = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
     index_name = os.getenv("PINECONE_INDEX_NAME")
-    index_host = os.getenv("PINECONE_HOST")  # optional
-
-    chunks_dir = os.path.join(args.input_dir, "chunks")
-    if not os.path.exists(chunks_dir):
-        logger.error(f"Chunks directory not found: {chunks_dir}")
-        sys.exit(1)
 
     # Initialize the PineconeUploader instance.
-    uploader = PineconeUploader(
-        api_key, environment, index_name, customer_id, index_host
-    )
+    uploader = PineconeUploader(api_key, index_name)
     records = uploader.prepare_records(chunks_dir)
     if not records:
         logger.error("No records to process; exiting.")

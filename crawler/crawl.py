@@ -99,7 +99,8 @@ async def crawl():
 
     md_generator = DefaultMarkdownGenerator(content_filter=content_filter)
 
-    deep_crawl = BFSDeepCrawlStrategy(max_depth=3, include_external=False)
+    # TODO: Add max depth to config
+    deep_crawl = BFSDeepCrawlStrategy(max_depth=0, include_external=False)
     config = CrawlerRunConfig(
         deep_crawl_strategy=deep_crawl,
         scraping_strategy=LXMLWebScrapingStrategy(),
@@ -119,7 +120,7 @@ async def crawl():
     all_results = []
     # TODO: Add to config
     starting_urls = [
-        "https://www.westhillsvineyards.com/wines",
+        "https://www.westhillsvineyards.com",
     ]
 
     async with AsyncWebCrawler() as crawler:
@@ -171,6 +172,8 @@ async def crawl():
             # Add metadata to the result object
             res.page_path = sanitize_filename(res.url)
             res.content_hash = content_hash
+
+            print(res.markdown)
 
             final_results.append(res)
 

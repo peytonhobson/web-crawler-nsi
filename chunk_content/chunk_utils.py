@@ -74,7 +74,7 @@ def chunk_documents(docs, chunk_size=700, overlap_ratio=0.3):
             chunks.append(chunk_text)
 
         # Create Document objects for each chunk
-        for chunk_text in enumerate(chunks):
+        for i, chunk_text in enumerate(chunks):
             # Set metadata
             metadata = (
                 doc.metadata.copy() if hasattr(doc, "metadata") and doc.metadata else {}
@@ -83,7 +83,8 @@ def chunk_documents(docs, chunk_size=700, overlap_ratio=0.3):
                 {
                     "url": doc.metadata.get("url", "unknown"),
                     "crawl_timestamp": datetime.datetime.now().isoformat(),
-                    "chunk_hash": hashlib.md5(chunk_text.encode("utf-8")).hexdigest(),
+                    "page_path": doc.metadata.get("page_path", "unknown"),
+                    "chunk_name": f"{doc.metadata.get('page_path', 'unknown')}-{i+1}",
                 }
             )
 

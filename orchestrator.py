@@ -10,6 +10,9 @@ from crawler.crawl import crawl
 from chunk_content import chunk_content
 from summary import summarize_content
 
+# Create logs directory if it doesn't exist
+Path("logs").mkdir(exist_ok=True)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,9 +34,6 @@ async def main(dry_run=False):
         # Load environment variables
         load_dotenv()
 
-        # Create logs directory if it doesn't exist
-        Path("logs").mkdir(exist_ok=True)
-
         logger.info("Starting orchestration process...")
 
         # Run crawler
@@ -54,7 +54,7 @@ async def main(dry_run=False):
 
         if dry_run:
             # Save the summarized results instead of uploading to Pinecone
-            logger.info("Dry run mode: Saving results to cleaned_output folder")
+            logger.info("Saving results to chunks folder")
             save_results_to_folder(summarized_results)
         else:
             # Run Pinecone upload
@@ -68,51 +68,38 @@ async def main(dry_run=False):
 
 
 def save_results_to_folder(results):
-    """Save the summarized results to a folder.
+    """Save the chunked results to a folder as simple text files.
 
     Args:
-        results (list): List of summarized crawl results
+        results (list): List of processed chunk results
     """
     try:
         # Create the output directory if it doesn't exist
         output_dir = Path("cleaned_output")
         output_dir.mkdir(exist_ok=True)
 
-        # Generate a timestamp for the output files
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        print(f"Saving {len(results)} chunks to {output_dir}")
 
-        # Save each result to a separate markdown file
+        # Save each result as a simple text file
         for i, result in enumerate(results):
-            # Create a sanitized filename based on the URL
-            url_part = result.url.split("//")[-1].replace("/", "_")
-            filename = f"{i+1}_{url_part}.md"
+            # Get URL for filename
+            page_path = getattr(result, "chunk_name", "unknown")
+            page_path_part = (
+                page_path.split("//")[-1].replace("/", "_").replace(":", "_")
+            )
+
+            # Create filename with index for uniqueness
+            filename = f"{page_path_part}-{i+1}.txt"
             file_path = output_dir / filename
 
-            # Write the markdown content to the file
+            # Write the content to the file
             with open(file_path, "w", encoding="utf-8") as f:
-                # Add metadata as YAML frontmatter
-                f.write("---\n")
-                f.write(f"url: {result.url}\n")
-                f.write(f"timestamp: {timestamp}\n")
-                f.write("---\n\n")
                 f.write(result.markdown)
 
-            logger.info(f"Saved result to {file_path}")
-
-        # Save a summary JSON file with metadata
-        summary_path = output_dir / f"summary_{timestamp}.json"
-        with open(summary_path, "w", encoding="utf-8") as f:
-            summary_data = {
-                "timestamp": timestamp,
-                "total_results": len(results),
-                "urls": [result.url for result in results],
-            }
-            json.dump(summary_data, f, indent=2)
-
-        logger.info(f"Saved summary to {summary_path}")
+            logger.info(f"Saved chunk {i+1} to {file_path}")
 
     except Exception as e:
-        logger.error(f"Error saving results to folder: {str(e)}")
+        logger.error(f"Error saving chunks to folder: {str(e)}")
         raise
 
 
@@ -120,7 +107,7 @@ def run_pinecone_upload():
     """Run the Pinecone upload script."""
     try:
         logger.info("Starting Pinecone upload...")
-        from vectordb.upload_to_pinecone_v2 import main as run_upload
+        from vectordb.pinecone import main as run_upload
 
         run_upload()
         logger.info("Pinecone upload completed successfully")
