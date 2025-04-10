@@ -1,6 +1,9 @@
 import sys
 import logging
 import asyncio
+import argparse
+import json
+from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 from crawler.crawl import crawl
@@ -20,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def main():
+async def main(dry_run=False):
     """Main orchestrator function that runs crawler, summarization,
     and Pinecone upload in sequence."""
     try:
@@ -28,7 +31,7 @@ async def main():
         load_dotenv()
 
         # Create logs directory if it doesn't exist
-        # Path("logs").mkdir(exist_ok=True)
+        Path("logs").mkdir(exist_ok=True)
 
         logger.info("Starting orchestration process...")
 
@@ -40,16 +43,70 @@ async def main():
         # Run summarization with the crawl results directly
         logger.info("Starting content summarization...")
         summarized_results = summarize_content(crawling_results)
-        logger.info(f"Summarization completed with {len(summarized_results)} results")
+        results_count = len(summarized_results)
+        logger.info(f"Summarization completed with {results_count} results")
 
-        # Run Pinecone upload
-        run_pinecone_upload()
+        if dry_run:
+            # Save the summarized results instead of uploading to Pinecone
+            logger.info("Dry run mode: Saving results to cleaned_output folder")
+            save_results_to_folder(summarized_results)
+        else:
+            # Run Pinecone upload
+            run_pinecone_upload()
 
         logger.info("Orchestration completed successfully")
 
     except Exception as e:
         logger.error(f"Orchestration failed: {str(e)}")
         sys.exit(1)
+
+
+def save_results_to_folder(results):
+    """Save the summarized results to a folder.
+
+    Args:
+        results (list): List of summarized crawl results
+    """
+    try:
+        # Create the output directory if it doesn't exist
+        output_dir = Path("cleaned_output")
+        output_dir.mkdir(exist_ok=True)
+
+        # Generate a timestamp for the output files
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Save each result to a separate markdown file
+        for i, result in enumerate(results):
+            # Create a sanitized filename based on the URL
+            filename = f"{result..md"
+            file_path = output_dir / filename
+
+            # Write the markdown content to the file
+            with open(file_path, "w", encoding="utf-8") as f:
+                # Add metadata as YAML frontmatter
+                f.write("---\n")
+                f.write(f"url: {result.url}\n")
+                f.write(f"timestamp: {timestamp}\n")
+                f.write("---\n\n")
+                f.write(result.markdown)
+
+            logger.info(f"Saved result to {file_path}")
+
+        # Save a summary JSON file with metadata
+        summary_path = output_dir / f"summary_{timestamp}.json"
+        with open(summary_path, "w", encoding="utf-8") as f:
+            summary_data = {
+                "timestamp": timestamp,
+                "total_results": len(results),
+                "urls": [result.url for result in results],
+            }
+            json.dump(summary_data, f, indent=2)
+
+        logger.info(f"Saved summary to {summary_path}")
+
+    except Exception as e:
+        logger.error(f"Error saving results to folder: {str(e)}")
+        raise
 
 
 def run_pinecone_upload():
@@ -66,4 +123,15 @@ def run_pinecone_upload():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Run the web crawler orchestration process"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Save results to folder instead of uploading to Pinecone",
+    )
+    args = parser.parse_args()
+
+    asyncio.run(main(dry_run=args.dry_run))

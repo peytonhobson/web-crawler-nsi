@@ -14,11 +14,7 @@ import hashlib
 import datetime
 import shutil
 import glob
-from pathlib import Path
 import spacy
-
-# Add the parent directory to Python path so we can import from crawler
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from crawler.chunk_utils import chunk_documents, sanitize_filename
 from langchain_core.documents import Document
 
@@ -79,7 +75,7 @@ def generate_vector_id(customer_id, chunk_index):
     return f"web_crawl_{today}_{customer_id}_chunk_{chunk_index}"
 
 
-def main():
+def chunk_content():
     # Get customer ID from environment or use default
     customer_id = os.environ.get("CUSTOMER_ID", "demo-customer")
 
@@ -229,7 +225,3 @@ def main():
     print(
         "\nYou can now run the upload_to_pinecone_v2.py script to upload these chunks to Pinecone."
     )
-
-
-if __name__ == "__main__":
-    main()
