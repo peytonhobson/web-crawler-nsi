@@ -37,6 +37,19 @@ async def run_crawler():
         raise
 
 
+def run_summarization():
+    """Run the chunk summarization script."""
+    try:
+        logger.info("Starting chunk summarization...")
+        from crawler.summarize_chunks import main as run_summarize
+
+        run_summarize()
+        logger.info("Summarization completed successfully")
+    except Exception as e:
+        logger.error(f"Error running summarization: {str(e)}")
+        raise
+
+
 def run_pinecone_upload():
     """Run the Pinecone upload script."""
     try:
@@ -51,7 +64,7 @@ def run_pinecone_upload():
 
 
 async def main():
-    """Main orchestrator function that runs crawler and Pinecone upload in sequence."""
+    """Main orchestrator function that runs crawler, summarization, and Pinecone upload in sequence."""
     try:
         # Load environment variables
         load_dotenv()
@@ -63,6 +76,9 @@ async def main():
 
         # Run crawler
         await run_crawler()
+
+        # Run summarization
+        run_summarization()
 
         # Run Pinecone upload
         run_pinecone_upload()

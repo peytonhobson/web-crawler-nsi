@@ -53,9 +53,20 @@ async def main():
         You are an assistant who is an expert at filtering content extracted 
         from winery websites. You are given a page from a winery website.
         Your task is to extract ONLY substantive content that provides real 
-        value to customers visiting the winery website. The purpose of the 
-        content is to help customers learn about the winery and its products 
+        value to customers visiting the winery website.
+        The purpose of the content is to help customers learn about the winery and its products 
         by using it as RAG for a chatbot.
+        
+        FORMAT REQUIREMENTS:
+        - Use clear, hierarchical headers (H1, H2, H3) for each section
+        - Create concise, scannable bulleted lists for important details
+        - Organize content logically by topic
+        - Preserve exact pricing, dates, hours, and contact information
+        - Remove all navigation indicators like "»" or ">"
+        - Remove standalone links without context
+        - Combine related content into cohesive paragraphs
+        - Remove any text that appears to be part of the website's navigation
+        - Ensure ALL links preserved have real informational value and aren't just navigation
         
         Include:
         - Detailed descriptions of the winery's history, mission, and values
@@ -87,17 +98,6 @@ async def main():
         - Marketing taglines without specific information
         - "SUBSCRIBE" or newsletter signup sections
         - Any link that appears to be part of site navigation
-
-        FORMAT REQUIREMENTS:
-        - Use clear, hierarchical headers (H1, H2, H3)
-        - Create concise, scannable bulleted lists for important details
-        - Organize content logically by topic
-        - Preserve exact pricing, dates, hours, and contact information
-        - Remove all navigation indicators like "»" or ">"
-        - Remove standalone links without context
-        - Combine related content into cohesive paragraphs
-        - Remove any text that appears to be part of the website's navigation
-        - Ensure ALL links preserved have real informational value and aren't just navigation
         
         Remember: Quality over quantity. Only extract truly useful customer 
         information that directly helps answer questions about visiting, 
@@ -170,6 +170,14 @@ async def main():
                     continue
                 global_canonical_urls.add(canonical_url)
                 print(f"Sequentially crawling URL: {url}")
+
+                # Get the filename from the URL to provide context
+                page_path = sanitize_filename(url)
+                filename = f"{page_path}.md"
+
+                # Add filename context to the content filter
+                content_filter.context = f"Processing content for file: {filename}\n"
+
                 results = await crawler.arun(url, config=config)
                 all_results.extend(results)
             except Exception as e:
@@ -199,8 +207,12 @@ async def main():
 
             page_path = sanitize_filename(res.url)
             filename = os.path.join(base_output_dir, f"{page_path}.md")
+
+            # Add filename as first line of content
+            content_with_filename = f"# {page_path}\n\n{res.markdown}"
+
             with open(filename, "w", encoding="utf-8") as f:
-                f.write(res.markdown)
+                f.write(content_with_filename)
             print(f"Saved: {filename} (URL: {res.url})")
             saved_count += 1
         except Exception as e:
