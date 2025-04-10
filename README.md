@@ -16,10 +16,13 @@ This project implements a web crawler that processes content and stores it in a 
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - Pinecone API access
-- OpenAI API access (for content filtering)
-- spaCy with en_core_web_sm model
+- OpenAI API access (for content filtering and embeddings)
+- crawl4ai library for web crawling
+- langchain for RAG-based operations
+- Vector embedding models (support for OpenAI or sentence-transformers)
+- spaCy with en_core_web_sm model (included in requirements.txt)
 
 ## Setup
 
@@ -29,13 +32,28 @@ git clone <repository-url>
 cd web-crawler
 ```
 
-2. Install dependencies:
+2. Set up a virtual environment:
 ```bash
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+# venv\Scripts\activate
 ```
 
-3. Configure environment variables:
+3. Install dependencies:
+```bash
+# Install required packages
+pip install -r requirements.txt
+
+# Note: The en_core_web_sm model is included in requirements.txt
+# and should be installed automatically
+```
+
+4. Configure environment variables:
    - Copy `.env.example` to `.env`
    - Fill in your API keys and configuration values
    - Adjust optional parameters as needed
@@ -91,6 +109,31 @@ python crawler/crawl.py
 ```bash
 python vectordb/upload_to_pinecone_v2.py
 ```
+
+### Virtual Environment Maintenance
+
+For managing your virtual environment:
+
+- **Activating**: Always activate the virtual environment before running commands
+  ```bash
+  source venv/bin/activate  # On macOS/Linux
+  # venv\Scripts\activate   # On Windows
+  ```
+
+- **Updating dependencies**: If requirements.txt changes, update your environment
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+- **Deactivating**: When finished, deactivate the virtual environment
+  ```bash
+  deactivate
+  ```
+
+- **Dependencies**: To see installed packages in your environment
+  ```bash
+  pip list
+  ```
 
 ## Vector Database Structure
 
