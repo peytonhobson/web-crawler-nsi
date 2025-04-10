@@ -1,10 +1,10 @@
 import sys
 import logging
 import asyncio
-from pathlib import Path
-from dotenv import load_dotenv
 from datetime import datetime
+from dotenv import load_dotenv
 from crawler.crawl import crawl
+from summary import summarize_content
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    """Main orchestrator function that runs crawler, summarization, and Pinecone upload in sequence."""
+    """Main orchestrator function that runs crawler, summarization,
+    and Pinecone upload in sequence."""
     try:
         # Load environment variables
         load_dotenv()
@@ -29,12 +30,17 @@ async def main():
         # Create logs directory if it doesn't exist
         # Path("logs").mkdir(exist_ok=True)
 
-        # logger.info("Starting orchestration process...")
+        logger.info("Starting orchestration process...")
 
+        # Run crawler
+        logger.info("Starting crawler...")
         crawling_results = await crawl()
+        logger.info(f"Crawling completed with {len(crawling_results)} results")
 
-        # Run summarization
-        summary_results = run_summarization(crawling_results)
+        # Run summarization with the crawl results directly
+        logger.info("Starting content summarization...")
+        summarized_results = summarize_content(crawling_results)
+        logger.info(f"Summarization completed with {len(summarized_results)} results")
 
         # Run Pinecone upload
         run_pinecone_upload()
@@ -44,19 +50,6 @@ async def main():
     except Exception as e:
         logger.error(f"Orchestration failed: {str(e)}")
         sys.exit(1)
-
-
-def run_summarization():
-    """Run the chunk summarization script."""
-    try:
-        logger.info("Starting chunk summarization...")
-        from summary.summarize_chunks import main as run_summarize
-
-        run_summarize()
-        logger.info("Summarization completed successfully")
-    except Exception as e:
-        logger.error(f"Error running summarization: {str(e)}")
-        raise
 
 
 def run_pinecone_upload():
