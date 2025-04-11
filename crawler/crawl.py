@@ -29,7 +29,7 @@ async def crawl():
         print("⚠️  OPENAI_API_KEY environment variable is not set.")
         return None
 
-    deep_crawl = BFSDeepCrawlStrategy(max_depth=0, include_external=False)
+    deep_crawl = BFSDeepCrawlStrategy(max_depth=3, include_external=False)
 
     basic_config = CrawlerRunConfig(
         deep_crawl_strategy=deep_crawl,
@@ -99,15 +99,13 @@ async def crawl():
     async with AsyncWebCrawler() as crawler:
         response = await crawler.arun(
             # TODO: Make starting url in config
-            "https://www.westhillsvineyards.com",
+            "https://www.westhillsvineyards.com/wines",
             config=basic_config,
         )
         for results in response:
             for r in results:
                 internal_links = r.links.get("internal", [])
                 for link in internal_links:
-                    if len(unique_links) > 1:
-                        break
                     unique_links.add(link["href"])
 
         print(f"Found {len(unique_links)} unique links.")
@@ -123,7 +121,7 @@ async def crawl():
                 return []
 
         # Process URLs in batches of 10
-        batch_size = 10
+        batch_size = 20
         url_list = list(unique_links)
         total_batches = (len(url_list) + batch_size - 1) // batch_size
 
