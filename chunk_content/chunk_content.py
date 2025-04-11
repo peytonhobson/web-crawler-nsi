@@ -5,21 +5,8 @@ Document Chunking Script
 This script takes crawl results, chunks them using spaCy, and returns the chunks.
 """
 
-import sys
-import spacy
 from chunk_content.chunk_utils import chunk_documents
 from langchain_core.documents import Document
-
-# Load spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except Exception as e:
-    print(f"Error loading spaCy model: {e}")
-    print("Installing spaCy model...")
-    import subprocess
-
-    subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
 
 
 def chunk_content(crawl_results):

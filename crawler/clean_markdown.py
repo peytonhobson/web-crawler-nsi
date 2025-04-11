@@ -45,7 +45,7 @@ def remove_all_markdown_links(results):
             continue
 
         # Replace all links with just their text content
-        modified_content = link_pattern.sub(r"\1", result.markdown)
+        modified_content = link_pattern.sub(r"\1", result.markdown.fit_markdown)
 
         # Update the markdown content
         result.markdown = modified_content

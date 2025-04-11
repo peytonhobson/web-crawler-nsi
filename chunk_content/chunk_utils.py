@@ -1,7 +1,6 @@
 import spacy
 from langchain_core.documents import Document
 import datetime
-import hashlib
 import sys
 
 # Load spaCy model
@@ -82,7 +81,6 @@ def chunk_documents(docs, chunk_size=700, overlap_ratio=0.3):
             metadata.update(
                 {
                     "url": doc.metadata.get("url", "unknown"),
-                    "crawl_timestamp": datetime.datetime.now().isoformat(),
                     "page_path": doc.metadata.get("page_path", "unknown"),
                     "chunk_name": f"{doc.metadata.get('page_path', 'unknown')}-{i+1}",
                 }

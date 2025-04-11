@@ -22,7 +22,6 @@ import sys
 import logging
 import time
 from datetime import datetime
-from typing import List, Dict, Any
 import re
 from dotenv import load_dotenv
 
@@ -36,7 +35,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CHUNK_ID_PREFIX = ""
+CHUNK_ID_PREFIX = "web_crawl"
 
 
 class PineconeUploader:
@@ -95,23 +94,22 @@ class PineconeUploader:
         Upserts the provided records to the Pinecone index using server-side
         embedding. Uses the upsert_records method which handles text-to-vector
         conversion on Pinecone's side.
+
+        Records are processed in batches of 50 to prevent timeouts and memory issues.
         """
         try:
+            total_records = len(records)
             logger.info(
-                f"Upserting {len(records)} records into namespace: {self.web_namespace}"
+                f"Upserting {total_records} records into namespace: {self.web_namespace}"
             )
 
-            # Format records for upsert_records
+            # Format all records first
             formatted_records = []
-            print("records", records)
             for record in records:
-                print("1")
                 # Access attributes directly since record is a namespace object
                 url = record.url
                 chunk_name = record.chunk_name
-                upload_timestamp = record.crawl_timestamp
                 chunk_text = record.markdown
-                print("2")
 
                 # Create a record with ID and text field for embedding
                 formatted_record = {
@@ -121,17 +119,45 @@ class PineconeUploader:
                     "chunk_text": chunk_text,
                     # Additional metadata
                     "url": url,
-                    "upload_timestamp": upload_timestamp,
+                    "upload_timestamp": datetime.now().isoformat(),
                 }
-                print("4")
                 formatted_records.append(formatted_record)
 
-            print("before upsert")
-            # Use upsert_records which handles server-side embedding
-            self.index.upsert_records(self.web_namespace, formatted_records)
+            # Process records in batches of 50
+            batch_size = 50
+            total_batches = (len(formatted_records) + batch_size - 1) // batch_size
+            records_upserted = 0
 
-            logger.info("Upsert operation completed successfully")
-            return len(records)
+            logger.info(
+                f"Processing {total_batches} batches of up to {batch_size} records each"
+            )
+
+            for i in range(total_batches):
+                start_idx = i * batch_size
+                end_idx = min(start_idx + batch_size, len(formatted_records))
+                batch = formatted_records[start_idx:end_idx]
+
+                batch_count = len(batch)
+                logger.info(
+                    f"Upserting batch {i+1}/{total_batches} with {batch_count} records"
+                )
+
+                # Use upsert_records which handles server-side embedding
+                self.index.upsert_records(self.web_namespace, batch)
+                records_upserted += batch_count
+
+                logger.info(
+                    f"Completed batch {i+1}/{total_batches}. Progress: {records_upserted}/{total_records}"
+                )
+
+                # Small pause between batches to avoid rate limiting
+                if i < total_batches - 1:
+                    time.sleep(0.5)
+
+            logger.info(
+                f"Upsert operation completed successfully. Total records upserted: {records_upserted}"
+            )
+            return records_upserted
         except Exception as e:
             logger.error(f"Error during upsert: {e}")
             raise
@@ -180,14 +206,18 @@ class PineconeUploader:
                 logger.info(
                     f"Fetching all {len(all_matching_ids)} vectors to check timestamps"
                 )
-                vectors_data = self.index.fetch(
+                # Fetch vectors using the Pinecone v6 format
+                response = self.index.fetch(
                     ids=all_matching_ids, namespace=self.web_namespace
                 )
 
+                # Access the vectors attribute from the response object
+                # In Pinecone v6, response is an object with a 'vectors' attribute
+                vectors_dict = response.vectors
+
                 # Process all vectors
-                for vector_id, vector_data in vectors_data.get("vectors", {}).items():
-                    metadata = vector_data.get("metadata", {})
-                    upload_timestamp = metadata.get("upload_timestamp")
+                for vector_id, vector_data in vectors_dict.items():
+                    upload_timestamp = vector_data.metadata["upload_timestamp"]
 
                     if upload_timestamp:
                         # Parse timestamp and compare
@@ -208,8 +238,12 @@ class PineconeUploader:
                         logger.warning(
                             f"Vector {vector_id} has no upload_timestamp metadata"
                         )
+
             except Exception as e:
                 logger.error(f"Error fetching vectors: {e}")
+                import traceback
+
+                traceback.print_exc()
                 return 0
 
             # Check if we found any old vectors
@@ -252,14 +286,14 @@ def upload_chunks(chunks):
     # Initialize the PineconeUploader instance.
     uploader = PineconeUploader(api_key, index_name)
 
-    # upserted_count = uploader.upsert_records(chunks)
+    upserted_count = uploader.upsert_records(chunks)
 
-    # logger.info(f"Upserted {upserted_count} records")
+    logger.info(f"Upserted {upserted_count} records")
 
     deleted_count = uploader.delete_older_than_one_hour()
 
     logger.info(f"Deleted {deleted_count} old records")
 
-    # logger.info(
-    #     f"Operation complete: {upserted_count} records upserted, {deleted_count} old records deleted."
-    # )
+    logger.info(
+        f"Operation complete: {upserted_count} records upserted, {deleted_count} old records deleted."
+    )

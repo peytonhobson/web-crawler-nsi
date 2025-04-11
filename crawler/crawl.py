@@ -1,5 +1,5 @@
 import os
-import hashlib
+import asyncio
 from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
 from crawl4ai import (
@@ -22,15 +22,23 @@ async def crawl():
     """
     Crawl winery websites, process content, and return processed results.
 
-    Args:
-        run_chunking (bool): Whether to run the chunking process after crawling.
-
     Returns:
         list: Processed content results with duplicates removed.
     """
     if "OPENAI_API_KEY" not in os.environ:
         print("⚠️  OPENAI_API_KEY environment variable is not set.")
         return None
+
+    deep_crawl = BFSDeepCrawlStrategy(max_depth=0, include_external=False)
+
+    basic_config = CrawlerRunConfig(
+        deep_crawl_strategy=deep_crawl,
+        exclude_external_links=True,
+        exclude_social_media_links=True,
+        exclude_external_images=True,
+        verbose=False,
+        js_code=[get_hidden_elements_removal_js()],
+    )
 
     openai_config = LLMConfig(
         provider="openai/gpt-4o-mini",
@@ -41,68 +49,39 @@ async def crawl():
         llm_config=openai_config,
         instruction="""
         You are an assistant who is an expert at filtering content extracted 
-        from winery websites. You are given a page from a winery website.
+        from websites. You are given a page from a website.
         Your task is to extract ONLY substantive content that provides real 
-        value to customers visiting the winery website.
-        The purpose of the content is to help customers learn about the winery 
-        and its products by using it as RAG for a chatbot.
+        value to customers visiting the website.
+        The purpose of the content is to help customers learn about the company 
+        and its products by using it as chunks for RAG.
         
         FORMAT REQUIREMENTS:
         - Use clear, hierarchical headers (H1, H2, H3) for each section
+        - Add new lines between paragraphs and lists for better readability
         - Create concise, scannable bulleted lists for important details
         - Organize content logically by topic
         - Preserve exact pricing, dates, hours, and contact information
-        - Remove all navigation indicators like "»" or ">"
-        - Remove standalone links without context
         - Combine related content into cohesive paragraphs
-        - Remove any text that appears to be part of the website's navigation
-        - Ensure ALL links preserved have real informational value and aren't 
-          just navigation
-        
-        Include:
-        - Detailed descriptions of the winery's history, mission, and values
-        - Specific information about wine varieties and tasting notes
-        - Detailed descriptions of the property, facilities, and amenities
-        - Event information including types of events and venue details
-        - Tour information including types of tours and what they include
-        - Pricing information for wines, tours, and events
-        - Contact information and location details
         
         Exclude:
         - ALL navigation links and menu items (e.g., [VENUE], [FAQ], [PRICING], 
         [GALLERY], etc.)
         - ALL social media links and sharing buttons
-        - ALL generic call-to-action buttons (e.g., [SHOP NOW], [LEARN MORE], 
-        [VISIT US])
-        - "CONTACT US", "MENU", "INQUIRIES" and similar standalone 
-        call-to-action text
-        - Header navigation and top-of-page links
-        - Footer navigation and bottom-of-page links
-        - Indicators like "top of page" or "bottom of page"
-        - Login/signup sections
-        - Shopping cart elements
-        - Generic welcome messages with no specific information
-        - Breadcrumbs and pagination elements
-        - Header and footer sections that do not contain substantive 
-        information
-        - Redundant links that appear in multiple places
-        - Marketing taglines without specific information
-        - "SUBSCRIBE" or newsletter signup sections
-        - Any link that appears to be part of site navigation
+        - Any other information that is not relevant to the company and its 
+        products
         
         Remember: Quality over quantity. Only extract truly useful customer 
         information that directly helps answer questions about visiting, 
-        purchasing, or learning about the winery and its products.
+        purchasing, or learning about the company and its products.
         """,
-        verbose=True,
+        verbose=False,
     )
 
     md_generator = DefaultMarkdownGenerator(content_filter=content_filter)
 
     # TODO: Add max depth to config
-    deep_crawl = BFSDeepCrawlStrategy(max_depth=0, include_external=False)
     config = CrawlerRunConfig(
-        deep_crawl_strategy=deep_crawl,
+        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=0, include_external=False),
         scraping_strategy=LXMLWebScrapingStrategy(),
         markdown_generator=md_generator,
         # TODO: Add to config
@@ -110,41 +89,65 @@ async def crawl():
         exclude_external_links=True,
         exclude_social_media_links=True,
         exclude_external_images=True,
-        verbose=True,
+        verbose=False,
         js_code=[get_hidden_elements_removal_js()],
     )
 
-    global_content_hashes = set()
-    global_canonical_urls = set()
-
+    unique_links = set()
     all_results = []
-    # TODO: Add to config
-    starting_urls = [
-        "https://www.westhillsvineyards.com",
-    ]
 
     async with AsyncWebCrawler() as crawler:
-        for url in starting_urls:
+        response = await crawler.arun(
+            # TODO: Make starting url in config
+            "https://www.westhillsvineyards.com",
+            config=basic_config,
+        )
+        for results in response:
+            for r in results:
+                internal_links = r.links.get("internal", [])
+                for link in internal_links:
+                    if len(unique_links) > 1:
+                        break
+                    unique_links.add(link["href"])
+
+        print(f"Found {len(unique_links)} unique links.")
+
+        # Define a helper function to crawl a single URL
+        async def crawl_url(url):
             try:
-                canonical_url = canonicalize_url(url)
-                if canonical_url in global_canonical_urls:
-                    print(f"Skipping already processed URL: {url}")
-                    continue
-                global_canonical_urls.add(canonical_url)
-                print(f"Sequentially crawling URL: {url}")
-
-                # Get the filename from the URL to provide context
-                page_path = sanitize_filename(url)
-
-                # Add page context to the content filter
-                context_str = f"Processing content for page: {page_path}\n"
-                content_filter.context = context_str
-
                 results = await crawler.arun(url, config=config)
-                all_results.extend(results)
+                print(f"Completed: {url}")
+                return results
             except Exception as e:
                 print(f"Error crawling {url}: {e}")
-                continue
+                return []
+
+        # Process URLs in batches of 10
+        batch_size = 10
+        url_list = list(unique_links)
+        total_batches = (len(url_list) + batch_size - 1) // batch_size
+
+        print(f"Processing URLs in {total_batches} batches of {batch_size}")
+
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(url_list))
+            batch_urls = url_list[start_idx:end_idx]
+
+            print(
+                f"Processing batch {batch_num + 1}/{total_batches} "
+                f"with {len(batch_urls)} URLs"
+            )
+
+            # Use asyncio.gather to process batch of URLs in parallel
+            tasks = [crawl_url(url) for url in batch_urls]
+            results_list = await asyncio.gather(*tasks)
+
+            # Flatten results from this batch
+            for results in results_list:
+                all_results.extend(results)
+
+            print(f"Completed batch {batch_num + 1}/{total_batches}")
 
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
@@ -153,7 +156,7 @@ async def crawl():
     print("Post-processing results to remove links...")
     processed_pages = process_markdown_results(valid_pages)
 
-    # Filter out empty or duplicate content
+    # Filter out empty content
     final_results = []
     for res in processed_pages:
         try:
@@ -162,18 +165,8 @@ async def crawl():
                 print(f"Skipping empty content for {res.url}")
                 continue
 
-            content_hash = get_content_hash(res.markdown)
-            if content_hash in global_content_hashes:
-                print(f"Duplicate content detected for {res.url}")
-                continue
-
-            global_content_hashes.add(content_hash)
-
             # Add metadata to the result object
             res.page_path = sanitize_filename(res.url)
-            res.content_hash = content_hash
-
-            print(res.markdown)
 
             final_results.append(res)
 
@@ -181,7 +174,7 @@ async def crawl():
             print(f"❌ Failed to process page {res.url} due to: {e}")
             continue
 
-    print(f"\n✅ Crawling complete! Processed {len(final_results)} unique pages")
+    print(f"✅ Crawling complete! Processed {len(final_results)} unique pages")
 
     return final_results  # Return the processed results
 
@@ -191,11 +184,6 @@ def canonicalize_url(url):
     parsed = urlparse(url)
     path = parsed.path.rstrip("/")
     return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
-
-
-def get_content_hash(content):
-    """Generate a SHA256 hash for deduplication of content."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def get_hidden_elements_removal_js():

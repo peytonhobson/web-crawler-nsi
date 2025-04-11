@@ -2,6 +2,7 @@ import sys
 import logging
 import asyncio
 import argparse
+import time
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -27,10 +28,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def format_time(seconds):
+    """Format seconds into a human-readable time string."""
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+
+    if hours > 0:
+        return f"{int(hours)}h {int(minutes)}m {seconds:.2f}s"
+    elif minutes > 0:
+        return f"{int(minutes)}m {seconds:.2f}s"
+    else:
+        return f"{seconds:.2f}s"
+
+
 async def main(dry_run=False):
     """Main orchestrator function that runs crawler, chunking, summarization,
     and Pinecone upload in sequence."""
     try:
+        # Start timing the entire process
+        total_start_time = time.time()
+
         # Load environment variables
         load_dotenv()
 
@@ -38,32 +55,71 @@ async def main(dry_run=False):
 
         # Run crawler
         logger.info("Starting crawler...")
+        crawl_start_time = time.time()
         crawling_results = await crawl()
-        logger.info(f"Crawling completed with {len(crawling_results)} results")
+        crawl_time = time.time() - crawl_start_time
+        logger.info(
+            f"Crawling completed with {len(crawling_results)} results "
+            f"in {format_time(crawl_time)}"
+        )
 
         # Run content chunking on the crawl results
         logger.info("Starting content chunking...")
+        chunk_start_time = time.time()
         chunked_results = chunk_content(crawling_results)
-        logger.info(f"Chunking completed with {len(chunked_results)} chunks")
+        chunk_time = time.time() - chunk_start_time
+        logger.info(
+            f"Chunking completed with {len(chunked_results)} chunks "
+            f"in {format_time(chunk_time)}"
+        )
 
         # Run summarization with the chunk results
         logger.info("Starting content summarization...")
+        summary_start_time = time.time()
         summarized_results = summarize_content(chunked_results)
+        summary_time = time.time() - summary_start_time
         results_count = len(summarized_results)
-        logger.info(f"Summarization completed with {results_count} results")
+        logger.info(
+            f"Summarization completed with {results_count} results "
+            f"in {format_time(summary_time)}"
+        )
 
         if dry_run:
             # Save the summarized results instead of uploading to Pinecone
             logger.info("Saving results to chunks folder")
+            save_start_time = time.time()
             save_results_to_folder(summarized_results)
+            save_time = time.time() - save_start_time
+            logger.info(f"Results saved to folder in {format_time(save_time)}")
         else:
             # Run Pinecone upload
+            upload_start_time = time.time()
             upload_chunks(summarized_results)
+            upload_time = time.time() - upload_start_time
+            logger.info(f"Upload to Pinecone completed in {format_time(upload_time)}")
 
-        logger.info("Orchestration completed successfully")
+        # Calculate and log the total execution time
+        total_time = time.time() - total_start_time
+        logger.info(
+            f"Orchestration completed successfully in " f"{format_time(total_time)}"
+        )
+
+        # Print timing summary
+        logger.info("===== Performance Summary =====")
+        logger.info(f"Crawling:      {format_time(crawl_time)}")
+        logger.info(f"Chunking:      {format_time(chunk_time)}")
+        logger.info(f"Summarization: {format_time(summary_time)}")
+        if dry_run:
+            logger.info(f"Saving:        {format_time(save_time)}")
+        else:
+            logger.info(f"Upload:        {format_time(upload_time)}")
+        logger.info(f"Total time:    {format_time(total_time)}")
+        logger.info("=============================")
 
     except Exception as e:
-        logger.error(f"Orchestration failed: {str(e)}")
+        # Calculate execution time even if there's an error
+        total_time = time.time() - total_start_time
+        logger.error(f"Orchestration failed after {format_time(total_time)}: {str(e)}")
         sys.exit(1)
 
 
@@ -78,6 +134,19 @@ def save_results_to_folder(results):
         output_dir = Path("cleaned_output")
         output_dir.mkdir(exist_ok=True)
 
+        # Clear all existing files in the output directory
+        logger.info(f"Clearing existing files in {output_dir}")
+        existing_files = list(output_dir.glob("*.txt"))
+        if existing_files:
+            for file in existing_files:
+                try:
+                    file.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete file {file}: {e}")
+            logger.info(f"Removed {len(existing_files)} existing files")
+        else:
+            logger.info("No existing files found to clear")
+
         print(f"Saving {len(results)} chunks to {output_dir}")
 
         # Save each result as a simple text file
@@ -89,7 +158,7 @@ def save_results_to_folder(results):
             )
 
             # Create filename with index for uniqueness
-            filename = f"{page_path_part}-{i+1}.txt"
+            filename = f"{page_path_part}.txt"
             file_path = output_dir / filename
 
             # Write the content to the file
