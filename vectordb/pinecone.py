@@ -19,15 +19,15 @@ Usage:
 
 import os
 import sys
-import glob
 import logging
-import uuid
 import time
 from datetime import datetime
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 import re
 from dotenv import load_dotenv
-from pinecone import Pinecone  # Updated import for Pinecone SDK v6+
+
+# Import from the pinecone.control module where the Pinecone class is defined
+from pinecone import Pinecone
 import unicodedata
 
 # Configure logging
@@ -36,13 +36,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CHUNK_ID_PREFIX = "web_crawl"
+CHUNK_ID_PREFIX = ""
 
 
 class PineconeUploader:
     """
-    Handles connecting to Pinecone, uploading new records using integrated inference,
-    and deleting outdated web-scraped records by wiping the dedicated namespace.
+    Handles connecting to Pinecone, uploading new records using integrated
+    inference, and deleting outdated web-scraped records by wiping the
+    dedicated namespace.
     """
 
     def __init__(
@@ -56,6 +57,8 @@ class PineconeUploader:
         self.api_key = api_key
         self.index_name = index_name
         self.web_namespace = ""  # Use default namespace
+        # Generate a batch ID using timestamp for tracking current batch
+        self.batch_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
         # Initialize the Pinecone client
         self.pc = Pinecone(api_key=self.api_key)
@@ -87,10 +90,11 @@ class PineconeUploader:
         sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", ascii_str)
         return sanitized
 
-    def upsert_records(self, records: List[Dict[str, Any]]) -> int:
+    def upsert_records(self, records) -> int:
         """
-        Upserts the provided records to the Pinecone index using server-side embedding.
-        Uses the upsert_records method which handles text-to-vector conversion on Pinecone's side.
+        Upserts the provided records to the Pinecone index using server-side
+        embedding. Uses the upsert_records method which handles text-to-vector
+        conversion on Pinecone's side.
         """
         try:
             logger.info(
@@ -99,26 +103,32 @@ class PineconeUploader:
 
             # Format records for upsert_records
             formatted_records = []
+            print("records", records)
             for record in records:
-                metadata = record["metadata"]
+                print("1")
+                # Access attributes directly since record is a namespace object
+                url = record.url
+                chunk_name = record.chunk_name
+                upload_timestamp = record.crawl_timestamp
+                chunk_text = record.markdown
+                print("2")
+
                 # Create a record with ID and text field for embedding
                 formatted_record = {
                     # Provide ID directly as a field
-                    "_id": self.sanitize_vector_id(
-                        f"{CHUNK_ID_PREFIX}_{metadata["chunk_name"]}"
-                    ),
+                    "_id": self.sanitize_vector_id(f"{CHUNK_ID_PREFIX}_{chunk_name}"),
                     # Text to be embedded
-                    "chunk_text": record["chunk_text"],
+                    "chunk_text": chunk_text,
                     # Additional metadata
-                    "url": metadata["url"],
-                    "upload_timestamp": metadata["upload_timestamp"],
+                    "url": url,
+                    "upload_timestamp": upload_timestamp,
                 }
+                print("4")
                 formatted_records.append(formatted_record)
 
+            print("before upsert")
             # Use upsert_records which handles server-side embedding
-            self.index.upsert_records(
-                namespace=self.web_namespace, records=formatted_records
-            )
+            self.index.upsert_records(self.web_namespace, formatted_records)
 
             logger.info("Upsert operation completed successfully")
             return len(records)
@@ -126,128 +136,108 @@ class PineconeUploader:
             logger.error(f"Error during upsert: {e}")
             raise
 
-    def delete_records_by_date_prefix(self, date_str=None) -> int:
+    def delete_older_than_one_hour(self) -> int:
         """
-        Deletes vectors with ID prefixes matching a specific date.
-        If no date is provided, deletes yesterday's vectors.
-        This allows for precise deletion of old web crawl data without affecting
-        other data in the default namespace.
-
-        Args:
-            date_str: Optional date string in YYYYMMDD format. If not provided,
-                    defaults to yesterday's date.
+        Delete all records where:
+        1. The ID starts with CHUNK_ID_PREFIX
+        2. They are older than one hour based on timestamp metadata
 
         Returns:
             The number of deleted records.
         """
         try:
-            # If no date provided, use yesterday's date
-            if not date_str:
-                from datetime import datetime, timedelta
+            logger.info("Starting deletion of records older than one hour")
 
-                yesterday = datetime.now() - timedelta(days=1)
-                date_str = yesterday.strftime("%Y%m%d")
+            # Calculate timestamp for one hour ago
+            from datetime import datetime, timedelta
 
-            # Create the prefix pattern to match
-            prefix = f"web_crawl_{date_str}"
-            logger.info(f"Listing vectors with prefix '{prefix}' for deletion")
+            one_hour_ago = datetime.now() - timedelta(hours=1)
+            logger.info(f"Threshold time: {one_hour_ago.isoformat()}")
 
-            # Get all vector IDs matching the prefix
-            total_deleted = 0
-            deleted_batch = 0
+            # Get all vectors with the CHUNK_ID_PREFIX
+            all_old_vectors = []
+            logger.info(f"Listing all vectors with prefix '{CHUNK_ID_PREFIX}'...")
 
-            # Paginate through all vectors with this prefix
-            for ids_batch in self.index.list(
-                prefix=prefix, namespace=self.web_namespace
+            # Get all vector IDs with CHUNK_ID_PREFIX first
+            all_matching_ids = []
+            for batch in self.index.list(
+                prefix=CHUNK_ID_PREFIX, namespace=self.web_namespace
             ):
-                if ids_batch:
-                    logger.info(f"Deleting batch of {len(ids_batch)} vectors")
-                    self.index.delete(ids=ids_batch, namespace=self.web_namespace)
-                    deleted_batch += len(ids_batch)
-                    total_deleted += len(ids_batch)
-
-                    # Log progress for large deletions
-                    if deleted_batch >= 10000:
-                        logger.info(f"Deleted {total_deleted} vectors so far...")
-                        deleted_batch = 0
-
-                    # Small pause to avoid overwhelming the API
+                if batch:
+                    all_matching_ids.extend(batch)
+                    logger.info(f"Found batch of {len(batch)} vectors with prefix")
+                    # Small pause between batch processing
                     time.sleep(0.1)
 
-            logger.info(
-                f"Successfully deleted {total_deleted} vectors with prefix '{prefix}'"
-            )
-            return total_deleted
-
-        except Exception as e:
-            logger.error(
-                f"Error during targeted deletion of vectors with prefix '{date_str}': {e}"
-            )
-            raise
-
-    def delete_old_web_crawl_records(self, keep_most_recent=1) -> int:
-        """
-        Find and delete older web crawl data, keeping only the most recent crawls.
-        """
-        try:
-            # Add a small delay to ensure Pinecone has processed the recent upsert
-            time.sleep(2)
-
-            # First check if we have any vectors at all
-            stats = self.index.describe_index_stats()
-            total_vectors = stats["total_vector_count"]
-            logger.info(f"Total vectors in index: {total_vectors}")
-
-            if total_vectors == 0:
-                logger.info("Index is empty, nothing to delete")
+            if not all_matching_ids:
+                logger.info(f"No vectors with prefix '{CHUNK_ID_PREFIX}' found")
                 return 0
 
-            # Get all vectors with web_crawl_ prefix
-            all_vectors = []
-            logger.info("Listing all web crawl vectors...")
-            current_prefix = f"web_crawl_{self.batch_id}"
+            logger.info(f"Total {len(all_matching_ids)} vectors with matching prefix")
 
-            # First get vectors NOT matching current batch (these will be deleted)
-            for batch in self.index.list(
-                prefix="web_crawl_", namespace=self.web_namespace
-            ):
-                logger.info(f"Found batch of {len(batch)} vectors")
-                # Filter out vectors from current batch
-                old_vectors = [v for v in batch if not v.startswith(current_prefix)]
-                if old_vectors:
-                    logger.info(
-                        f"Found {len(old_vectors)} vectors from previous batches"
-                    )
-                    all_vectors.extend(old_vectors)
-                else:
-                    logger.info("No old vectors found in this batch")
+            # Fetch all vectors at once to check timestamps
+            try:
+                logger.info(
+                    f"Fetching all {len(all_matching_ids)} vectors to check timestamps"
+                )
+                vectors_data = self.index.fetch(
+                    ids=all_matching_ids, namespace=self.web_namespace
+                )
 
-            if not all_vectors:
-                logger.info("No old vectors found to delete")
+                # Process all vectors
+                for vector_id, vector_data in vectors_data.get("vectors", {}).items():
+                    metadata = vector_data.get("metadata", {})
+                    upload_timestamp = metadata.get("upload_timestamp")
+
+                    if upload_timestamp:
+                        # Parse timestamp and compare
+                        try:
+                            record_timestamp = datetime.fromisoformat(upload_timestamp)
+                            if record_timestamp < one_hour_ago:
+                                all_old_vectors.append(vector_id)
+                                logger.debug(
+                                    f"Vector {vector_id} is older than one hour "
+                                    f"(uploaded at {upload_timestamp})"
+                                )
+                        except (ValueError, TypeError) as e:
+                            logger.warning(
+                                f"Could not parse timestamp {upload_timestamp} "
+                                f"for vector {vector_id}: {e}"
+                            )
+                    else:
+                        logger.warning(
+                            f"Vector {vector_id} has no upload_timestamp metadata"
+                        )
+            except Exception as e:
+                logger.error(f"Error fetching vectors: {e}")
                 return 0
 
-            # Delete old vectors in batches
-            total_deleted = 0
-            batch_size = 100
-            for i in range(0, len(all_vectors), batch_size):
-                batch = all_vectors[i : i + batch_size]
-                logger.info(f"Deleting batch of {len(batch)} vectors: {batch[:5]}...")
-                self.index.delete(ids=batch, namespace=self.web_namespace)
-                total_deleted += len(batch)
-                logger.info(f"Deleted batch of {len(batch)} old vectors")
-                time.sleep(0.1)  # Small pause between batches
+            # Check if we found any old vectors
+            if not all_old_vectors:
+                logger.info("No vectors older than one hour found")
+                return 0
 
-            logger.info(
-                f"Successfully deleted {total_deleted} vectors from old batches"
-            )
-            return total_deleted
+            logger.info(f"Found {len(all_old_vectors)} vectors older than one hour")
+
+            # Delete all old vectors at once
+            try:
+                logger.info(f"Deleting all {len(all_old_vectors)} old vectors at once")
+                self.index.delete(ids=all_old_vectors, namespace=self.web_namespace)
+                total_deleted = len(all_old_vectors)
+                logger.info(
+                    f"Successfully deleted {total_deleted} vectors older than one hour"
+                )
+                return total_deleted
+            except Exception as e:
+                logger.error(f"Error deleting vectors: {e}")
+                return 0
 
         except Exception as e:
-            logger.error(f"Error during deletion of old web crawl records: {e}")
+            logger.error(f"Error during deletion of old records: {e}")
             raise
 
 
-def main(chunks):
+def upload_chunks(chunks):
     load_dotenv()
     # Validate required environment variables.
     required_vars = ["PINECONE_API_KEY", "PINECONE_INDEX_NAME"]
@@ -261,31 +251,15 @@ def main(chunks):
 
     # Initialize the PineconeUploader instance.
     uploader = PineconeUploader(api_key, index_name)
-    records = uploader.prepare_records(chunks_dir)
-    if not records:
-        logger.error("No records to process; exiting.")
-        sys.exit(1)
 
-    if args.dry_run:
-        logger.info(
-            "Dry run mode active: records prepared but not uploaded or deleted."
-        )
-        sys.exit(0)
+    # upserted_count = uploader.upsert_records(chunks)
 
-    # Upsert new records.
-    upserted_count = uploader.upsert_records(records)
+    # logger.info(f"Upserted {upserted_count} records")
 
-    # Handle deletion based on command line argument
-    if args.delete_date.lower() == "none":
-        logger.info("Skipping deletion of old records as requested")
-        deleted_count = 0
-    else:
-        deleted_count = uploader.delete_old_web_crawl_records(args.keep_recent)
+    deleted_count = uploader.delete_older_than_one_hour()
 
-    logger.info(
-        f"Upload complete: {upserted_count} records upserted, {deleted_count} old records deleted."
-    )
+    logger.info(f"Deleted {deleted_count} old records")
 
-
-if __name__ == "__main__":
-    main()
+    # logger.info(
+    #     f"Operation complete: {upserted_count} records upserted, {deleted_count} old records deleted."
+    # )

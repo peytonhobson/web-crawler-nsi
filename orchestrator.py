@@ -2,13 +2,13 @@ import sys
 import logging
 import asyncio
 import argparse
-import json
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 from crawler.crawl import crawl
 from chunk_content import chunk_content
 from summary import summarize_content
+from vectordb.pinecone import upload_chunks
 
 # Create logs directory if it doesn't exist
 Path("logs").mkdir(exist_ok=True)
@@ -58,7 +58,7 @@ async def main(dry_run=False):
             save_results_to_folder(summarized_results)
         else:
             # Run Pinecone upload
-            run_pinecone_upload()
+            upload_chunks(summarized_results)
 
         logger.info("Orchestration completed successfully")
 
@@ -100,19 +100,6 @@ def save_results_to_folder(results):
 
     except Exception as e:
         logger.error(f"Error saving chunks to folder: {str(e)}")
-        raise
-
-
-def run_pinecone_upload():
-    """Run the Pinecone upload script."""
-    try:
-        logger.info("Starting Pinecone upload...")
-        from vectordb.pinecone import main as run_upload
-
-        run_upload()
-        logger.info("Pinecone upload completed successfully")
-    except Exception as e:
-        logger.error(f"Error running Pinecone upload: {str(e)}")
         raise
 
 
