@@ -34,4 +34,4 @@ services:
         sync: false
       - key: PINECONE_INDEX_NAME
         sync: false
-    autoDeploy: true
+    autoDeploy: false
