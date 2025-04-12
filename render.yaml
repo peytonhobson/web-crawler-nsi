@@ -2,7 +2,7 @@
 services:
   # Web Crawler background worker service
   - type: cron
-    name: web-crawler
+    name: west-hills-vineyards-crawler
     plan: starter
     env: docker
     dockerfilePath: ./Dockerfile.render  # Use our custom Dockerfile for Render
@@ -13,11 +13,14 @@ services:
         value: "1"
       - key: USE_BROWSER
         value: "true"
-      # The following env vars should be set in the Render dashboard:
-      # - OPENAI_API_KEY
-      # - START_URLS
-      # - PINECONE_API_KEY (if using Pinecone)
-      # - PINECONE_INDEX_NAME (if using Pinecone)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: START_URLS
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_NAME
+        sync: false
     disk:
       name: crawler-data
       mountPath: /var/data
