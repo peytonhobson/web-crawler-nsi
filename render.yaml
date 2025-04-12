@@ -2,11 +2,10 @@
 services:
   # Web Crawler background worker service
   - type: cron
-    name: west-hills-vineyards-crawler
+    name: web-crawler
     plan: starter
     env: docker
     dockerfilePath: ./Dockerfile.render  # Use our custom Dockerfile for Render
-    schedule: "0 9 */2 * *"  # Run at 9 AM UTC every 2 days
     # No need for build/start commands - Docker handles this
     envVars:
       - key: PYTHONUNBUFFERED
