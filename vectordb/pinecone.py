@@ -21,7 +21,7 @@ import os
 import sys
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 from dotenv import load_dotenv
 
@@ -35,7 +35,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CHUNK_ID_PREFIX = "web_crawl"
+# Get configuration from environment variables
+CHUNK_ID_PREFIX = os.getenv("CHUNK_ID_PREFIX", "web_crawl")
+RECORD_RETENTION_HOURS = int(os.getenv("RECORD_RETENTION_HOURS", "1"))
+UPSERT_BATCH_SIZE = int(os.getenv("UPSERT_BATCH_SIZE", "50"))
+DELETE_OLD_RECORDS = os.getenv("DELETE_OLD_RECORDS", "true").lower() in [
+    "true",
+    "1",
+    "yes",
+]
 
 
 class PineconeUploader:
@@ -49,13 +57,34 @@ class PineconeUploader:
         self,
         api_key: str,
         index_name: str,
+        chunk_id_prefix=None,
+        record_retention_hours=None,
+        upsert_batch_size=None,
+        delete_old_records=None,
     ):
         """
         Initializes the uploader and connects to the correct Pinecone index.
+
+        Args:
+            api_key: Pinecone API key
+            index_name: Name of Pinecone index
+            chunk_id_prefix: Prefix for chunk IDs
+            record_retention_hours: How many hours to keep old records before deletion
+            upsert_batch_size: Number of records to upsert in each batch
+            delete_old_records: Whether to delete old records
         """
         self.api_key = api_key
         self.index_name = index_name
         self.web_namespace = ""  # Use default namespace
+
+        # Use provided values or fall back to environment defaults
+        self.chunk_id_prefix = chunk_id_prefix or CHUNK_ID_PREFIX
+        self.record_retention_hours = record_retention_hours or RECORD_RETENTION_HOURS
+        self.upsert_batch_size = upsert_batch_size or UPSERT_BATCH_SIZE
+        self.delete_old_records = (
+            delete_old_records if delete_old_records is not None else DELETE_OLD_RECORDS
+        )
+
         # Generate a batch ID using timestamp for tracking current batch
         self.batch_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -64,6 +93,12 @@ class PineconeUploader:
 
         # Add diagnostic logging
         logger.info(f"Initializing Pinecone client with index: {index_name}")
+
+        # Log configuration
+        logger.info(f"Using chunk ID prefix: {self.chunk_id_prefix}")
+        logger.info(f"Record retention hours: {self.record_retention_hours}")
+        logger.info(f"Upsert batch size: {self.upsert_batch_size}")
+        logger.info(f"Delete old records: {self.delete_old_records}")
 
         # Connect to the index
         try:
@@ -95,7 +130,7 @@ class PineconeUploader:
         embedding. Uses the upsert_records method which handles text-to-vector
         conversion on Pinecone's side.
 
-        Records are processed in batches of 50 to prevent timeouts and memory issues.
+        Records are processed in batches to prevent timeouts and memory issues.
         """
         try:
             total_records = len(records)
@@ -114,7 +149,9 @@ class PineconeUploader:
                 # Create a record with ID and text field for embedding
                 formatted_record = {
                     # Provide ID directly as a field
-                    "_id": self.sanitize_vector_id(f"{CHUNK_ID_PREFIX}_{chunk_name}"),
+                    "_id": self.sanitize_vector_id(
+                        f"{self.chunk_id_prefix}_{chunk_name}"
+                    ),
                     # Text to be embedded
                     "chunk_text": chunk_text,
                     # Additional metadata
@@ -123,8 +160,8 @@ class PineconeUploader:
                 }
                 formatted_records.append(formatted_record)
 
-            # Process records in batches of 50
-            batch_size = 50
+            # Process records in batches
+            batch_size = self.upsert_batch_size
             total_batches = (len(formatted_records) + batch_size - 1) // batch_size
             records_upserted = 0
 
@@ -147,7 +184,8 @@ class PineconeUploader:
                 records_upserted += batch_count
 
                 logger.info(
-                    f"Completed batch {i+1}/{total_batches}. Progress: {records_upserted}/{total_records}"
+                    f"Completed batch {i+1}/{total_batches}. "
+                    f"Progress: {records_upserted}/{total_records}"
                 )
 
                 # Small pause between batches to avoid rate limiting
@@ -155,39 +193,47 @@ class PineconeUploader:
                     time.sleep(0.5)
 
             logger.info(
-                f"Upsert operation completed successfully. Total records upserted: {records_upserted}"
+                f"Upsert operation completed. "
+                f"Total records upserted: {records_upserted}"
             )
             return records_upserted
         except Exception as e:
             logger.error(f"Error during upsert: {e}")
             raise
 
-    def delete_older_than_one_hour(self) -> int:
+    def delete_older_than_retention_period(self) -> int:
         """
         Delete all records where:
         1. The ID starts with CHUNK_ID_PREFIX
-        2. They are older than one hour based on timestamp metadata
+        2. They are older than the retention period based on timestamp metadata
 
         Returns:
             The number of deleted records.
         """
+        if not self.delete_old_records:
+            logger.info("Record deletion is disabled, skipping.")
+            return 0
+
         try:
-            logger.info("Starting deletion of records older than one hour")
+            logger.info(
+                f"Starting deletion of records older than "
+                f"{self.record_retention_hours} hours"
+            )
 
-            # Calculate timestamp for one hour ago
-            from datetime import datetime, timedelta
-
-            one_hour_ago = datetime.now() - timedelta(hours=1)
-            logger.info(f"Threshold time: {one_hour_ago.isoformat()}")
+            # Calculate timestamp for the retention period
+            retention_threshold = datetime.now() - timedelta(
+                hours=self.record_retention_hours
+            )
+            logger.info(f"Threshold time: {retention_threshold.isoformat()}")
 
             # Get all vectors with the CHUNK_ID_PREFIX
             all_old_vectors = []
-            logger.info(f"Listing all vectors with prefix '{CHUNK_ID_PREFIX}'...")
+            logger.info(f"Listing all vectors with prefix '{self.chunk_id_prefix}'...")
 
             # Get all vector IDs with CHUNK_ID_PREFIX first
             all_matching_ids = []
             for batch in self.index.list(
-                prefix=CHUNK_ID_PREFIX, namespace=self.web_namespace
+                prefix=self.chunk_id_prefix, namespace=self.web_namespace
             ):
                 if batch:
                     all_matching_ids.extend(batch)
@@ -196,7 +242,7 @@ class PineconeUploader:
                     time.sleep(0.1)
 
             if not all_matching_ids:
-                logger.info(f"No vectors with prefix '{CHUNK_ID_PREFIX}' found")
+                logger.info(f"No vectors with prefix '{self.chunk_id_prefix}' found")
                 return 0
 
             logger.info(f"Total {len(all_matching_ids)} vectors with matching prefix")
@@ -223,10 +269,11 @@ class PineconeUploader:
                         # Parse timestamp and compare
                         try:
                             record_timestamp = datetime.fromisoformat(upload_timestamp)
-                            if record_timestamp < one_hour_ago:
+                            if record_timestamp < retention_threshold:
                                 all_old_vectors.append(vector_id)
                                 logger.debug(
-                                    f"Vector {vector_id} is older than one hour "
+                                    f"Vector {vector_id} is older than "
+                                    f"{self.record_retention_hours} hours "
                                     f"(uploaded at {upload_timestamp})"
                                 )
                         except (ValueError, TypeError) as e:
@@ -248,10 +295,14 @@ class PineconeUploader:
 
             # Check if we found any old vectors
             if not all_old_vectors:
-                logger.info("No vectors older than one hour found")
+                logger.info(
+                    f"No vectors older than {self.record_retention_hours} hours found"
+                )
                 return 0
 
-            logger.info(f"Found {len(all_old_vectors)} vectors older than one hour")
+            logger.info(
+                f"Found {len(all_old_vectors)} vectors older than {self.record_retention_hours} hours"
+            )
 
             # Delete all old vectors at once
             try:
@@ -259,7 +310,8 @@ class PineconeUploader:
                 self.index.delete(ids=all_old_vectors, namespace=self.web_namespace)
                 total_deleted = len(all_old_vectors)
                 logger.info(
-                    f"Successfully deleted {total_deleted} vectors older than one hour"
+                    f"Successfully deleted {total_deleted} vectors older than "
+                    f"{self.record_retention_hours} hours"
                 )
                 return total_deleted
             except Exception as e:
@@ -271,7 +323,14 @@ class PineconeUploader:
             raise
 
 
-def upload_chunks(chunks):
+def upload_chunks(chunks, config=None):
+    """
+    Upload chunks to Pinecone vector database.
+
+    Args:
+        chunks: List of chunks to upload
+        config: Optional configuration object
+    """
     load_dotenv()
     # Validate required environment variables.
     required_vars = ["PINECONE_API_KEY", "PINECONE_INDEX_NAME"]
@@ -283,17 +342,35 @@ def upload_chunks(chunks):
     api_key = os.getenv("PINECONE_API_KEY")
     index_name = os.getenv("PINECONE_INDEX_NAME")
 
-    # Initialize the PineconeUploader instance.
-    uploader = PineconeUploader(api_key, index_name)
+    # Get configuration from config object if provided
+    chunk_id_prefix = None
+    record_retention_hours = None
+    upsert_batch_size = None
+    delete_old_records = None
+
+    if config:
+        chunk_id_prefix = getattr(config, "chunk_id_prefix", None)
+        record_retention_hours = getattr(config, "record_retention_hours", None)
+        upsert_batch_size = getattr(config, "upsert_batch_size", None)
+        delete_old_records = getattr(config, "delete_old_records", None)
+
+    # Initialize the PineconeUploader instance with configuration
+    uploader = PineconeUploader(
+        api_key,
+        index_name,
+        chunk_id_prefix=chunk_id_prefix,
+        record_retention_hours=record_retention_hours,
+        upsert_batch_size=upsert_batch_size,
+        delete_old_records=delete_old_records,
+    )
 
     upserted_count = uploader.upsert_records(chunks)
-
     logger.info(f"Upserted {upserted_count} records")
 
-    deleted_count = uploader.delete_older_than_one_hour()
-
+    deleted_count = uploader.delete_older_than_retention_period()
     logger.info(f"Deleted {deleted_count} old records")
 
     logger.info(
-        f"Operation complete: {upserted_count} records upserted, {deleted_count} old records deleted."
+        f"Operation complete: {upserted_count} records upserted, "
+        f"{deleted_count} old records deleted."
     )

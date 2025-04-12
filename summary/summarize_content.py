@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Chunk Summarization Module
+Chunk Keyword Generation Module
 
 This module processes chunked documents directly in memory,
-evaluates their content, and adds summaries to useful content.
+evaluates their content, and adds relevant keywords to useful content.
 It doesn't perform any file I/O operations.
 """
 
+import os
 import concurrent.futures
 from typing import List
 from dotenv import load_dotenv
@@ -17,16 +18,16 @@ from langchain_core.documents import Document
 load_dotenv()
 
 # Configurable parameters
-MODEL_NAME = "gpt-4o-mini"
-TEMPERATURE = 0.3
-MAX_TOKENS = 800
-MAX_WORKERS = 10
+MODEL_NAME = os.getenv("SUMMARY_MODEL_NAME", "gpt-4o-mini")
+TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.3"))
+MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "800"))
+MAX_WORKERS = int(os.getenv("SUMMARY_MAX_WORKERS", "10"))
 
 client = OpenAI()
 
 # System prompt for content evaluation
 system_prompt = """
-You are an expert at evaluating content.
+You are an expert at evaluating content and generating relevant keywords.
 Your task is to ONLY delete content that is "completely useless".
 ALWAYS KEEP content unless it is:
 - Completely empty
@@ -36,30 +37,31 @@ ALWAYS KEEP content unless it is:
 
 For all other content, even if minimal:
 - Keep the content
-- Generate a SINGLE SENTENCE summary that describes the overall topic/purpose 
-  of the chunk
-- Focuses on what information the chunk contains
-- Avoids listing specific items from the content
-- Uses precise terminology for RAG retrieval
-- Includes key descriptive words not in content
+- Generate 5-10 KEYWORDS that:
+  * DO NOT already exist in the content
+  * Are semantically related to the content
+  * Would help a vector search engine find this content
+  * Use precise terminology for RAG retrieval
+  * Are comma-separated without bullets or numbering
 
 Format response as:
 KEEP
-[Single-sentence summary]
+[comma-separated keywords]
 [Content]
 or
 DELETE
 """
 
 
-def summarize_content(chunked_documents: List[Document]):
-    """Process chunked documents concurrently and return summarized results.
+def summarize_content(chunked_documents: List[Document], config=None):
+    """Process chunked documents concurrently and return results with keywords.
 
     Args:
         chunked_documents (list): List of Document objects with chunk content
+        config: Optional configuration object with summarization parameters
 
     Returns:
-        list: Filtered and summarized documents
+        list: Filtered documents with added keywords
     """
     print(f"Found {len(chunked_documents)} chunks to process")
 
@@ -67,11 +69,26 @@ def summarize_content(chunked_documents: List[Document]):
         print("No chunks found!")
         return []
 
+    # Use configuration if provided
+    model_name = MODEL_NAME
+    temperature = TEMPERATURE
+    max_tokens = MAX_TOKENS
+    max_workers = MAX_WORKERS
+
+    if config:
+        model_name = getattr(config, "summary_model_name", model_name)
+        temperature = getattr(config, "summary_temperature", temperature)
+        max_tokens = getattr(config, "summary_max_tokens", max_tokens)
+        max_workers = getattr(config, "summary_max_workers", max_workers)
+
     processed_results = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_chunk = {
-            executor.submit(process_chunk, chunk): chunk for chunk in chunked_documents
+            executor.submit(
+                process_chunk, chunk, model_name, temperature, max_tokens
+            ): chunk
+            for chunk in chunked_documents
         }
         for future in concurrent.futures.as_completed(future_to_chunk):
             chunk = future_to_chunk[future]
@@ -84,11 +101,16 @@ def summarize_content(chunked_documents: List[Document]):
     return processed_results
 
 
-def process_chunk(chunk):
+def process_chunk(
+    chunk, model_name=MODEL_NAME, temperature=TEMPERATURE, max_tokens=MAX_TOKENS
+):
     """Process an individual chunk.
 
     Args:
         chunk: A Document object with page_content and metadata
+        model_name: The OpenAI model to use
+        temperature: Temperature setting for generation
+        max_tokens: Maximum tokens for the response
 
     Returns:
         tuple: (status, processed_chunk) where status is one of
@@ -100,11 +122,11 @@ def process_chunk(chunk):
         url = chunk.metadata.get("url", "unknown")
 
         # Process content using the API
-        cleaned_content, summary = process_chunk_content(content, client)
+        cleaned_content, keywords = process_chunk_content(
+            content, client, model_name, temperature, max_tokens
+        )
 
-        if summary == "DELETE":
-            print(content)
-            print(cleaned_content)
+        if keywords == "DELETE":
             print(f"Marked for deletion: chunk from {url} - no useful content")
             return "deleted", None
         else:
@@ -120,29 +142,41 @@ def process_chunk(chunk):
 
             # Set standard attributes expected by downstream processes
             result.url = url
-            result.markdown = f"{summary}\n\n{cleaned_content}"
+            result.markdown = (
+                f"[View Source]({url})\n\n"
+                f"Keywords: {keywords}\n\n"
+                f"{cleaned_content}"
+            )
 
-            print(f"Updated chunk from {url} with summary")
+            print(f"Updated chunk from {url} with keywords")
             return "kept", result
     except Exception as e:
         print(f"Error processing chunk from {url}: {e}")
         return "error", None
 
 
-def process_chunk_content(content, client):
+def process_chunk_content(
+    content,
+    client,
+    model_name=MODEL_NAME,
+    temperature=TEMPERATURE,
+    max_tokens=MAX_TOKENS,
+):
     """Process chunk content and determine if it should be kept.
 
     Args:
         content (str): The content to process
         client: OpenAI client instance
+        model_name: Model to use for processing
+        temperature: Temperature setting for generation
+        max_tokens: Maximum tokens in the response
 
     Returns:
-        tuple: (processed_content, summary) or (None, "DELETE")
+        tuple: (processed_content, keywords) or (None, "DELETE")
     """
     try:
-        # TODO: Output this as structured content using tooling
         response = client.chat.completions.create(
-            model=MODEL_NAME,
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -150,8 +184,8 @@ def process_chunk_content(content, client):
                     "content": f"Process this content:\n\n{content}",
                 },
             ],
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
         result = response.choices[0].message.content.strip()
@@ -161,19 +195,15 @@ def process_chunk_content(content, client):
 
         # Parse the response - skip the "KEEP" line
         lines = result.split("\n")
-        if len(lines) < 3:  # Need at least KEEP, summary, and content
+        if len(lines) < 3:  # Need at least KEEP, keywords, and content
             print(f"Unexpected response format: {result}")
             return None, "DELETE"
 
-        summary = lines[1].strip()
+        keywords = lines[1].strip()
         # Join all remaining lines as content
         cleaned_content = "\n".join(lines[2:]).strip()
 
-        # Ensure summary format
-        if not summary.endswith("."):
-            summary = f"{summary}."
-
-        return cleaned_content, summary
+        return cleaned_content, keywords
 
     except Exception as e:
         print(f"Error processing chunk: {e}")

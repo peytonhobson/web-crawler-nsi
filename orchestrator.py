@@ -10,6 +10,7 @@ from crawler.crawl import crawl
 from chunk_content import chunk_content
 from summary import summarize_content
 from vectordb.pinecone import upload_chunks
+from crawler.config import CrawlerConfig
 
 # Create logs directory if it doesn't exist
 Path("logs").mkdir(exist_ok=True)
@@ -51,32 +52,40 @@ async def main(dry_run=False):
         # Load environment variables
         load_dotenv()
 
-        logger.info("Starting orchestration process...")
+        # Create configuration from environment variables
+        config = CrawlerConfig.from_environment()
 
-        # Run crawler
+        # Override dry_run from command line if specified
+        if dry_run:
+            config.dry_run = True
+
+        logger.info("Starting orchestration process...")
+        logger.info(f"Using configuration with {len(config.start_urls)} start URLs")
+
+        # Run crawler with configuration
         logger.info("Starting crawler...")
         crawl_start_time = time.time()
-        crawling_results = await crawl()
+        crawling_results = await crawl(config)
         crawl_time = time.time() - crawl_start_time
         logger.info(
             f"Crawling completed with {len(crawling_results)} results "
             f"in {format_time(crawl_time)}"
         )
 
-        # Run content chunking on the crawl results
+        # Run content chunking on the crawl results with configuration
         logger.info("Starting content chunking...")
         chunk_start_time = time.time()
-        chunked_results = chunk_content(crawling_results)
+        chunked_results = chunk_content(crawling_results, config)
         chunk_time = time.time() - chunk_start_time
         logger.info(
             f"Chunking completed with {len(chunked_results)} chunks "
             f"in {format_time(chunk_time)}"
         )
 
-        # Run summarization with the chunk results
+        # Run summarization with the chunk results and configuration
         logger.info("Starting content summarization...")
         summary_start_time = time.time()
-        summarized_results = summarize_content(chunked_results)
+        summarized_results = summarize_content(chunked_results, config)
         summary_time = time.time() - summary_start_time
         results_count = len(summarized_results)
         logger.info(
@@ -84,24 +93,24 @@ async def main(dry_run=False):
             f"in {format_time(summary_time)}"
         )
 
-        if dry_run:
+        if config.dry_run:
             # Save the summarized results instead of uploading to Pinecone
-            logger.info("Saving results to chunks folder")
+            logger.info(f"Saving results to {config.output_dir} folder")
             save_start_time = time.time()
-            save_results_to_folder(summarized_results)
+            save_results_to_folder(summarized_results, config.output_dir)
             save_time = time.time() - save_start_time
             logger.info(f"Results saved to folder in {format_time(save_time)}")
         else:
-            # Run Pinecone upload
+            # Run Pinecone upload with configuration
             upload_start_time = time.time()
-            upload_chunks(summarized_results)
+            upload_chunks(summarized_results, config)
             upload_time = time.time() - upload_start_time
             logger.info(f"Upload to Pinecone completed in {format_time(upload_time)}")
 
         # Calculate and log the total execution time
         total_time = time.time() - total_start_time
         logger.info(
-            f"Orchestration completed successfully in " f"{format_time(total_time)}"
+            f"Orchestration completed successfully in {format_time(total_time)}"
         )
 
         # Print timing summary
@@ -109,7 +118,7 @@ async def main(dry_run=False):
         logger.info(f"Crawling:      {format_time(crawl_time)}")
         logger.info(f"Chunking:      {format_time(chunk_time)}")
         logger.info(f"Summarization: {format_time(summary_time)}")
-        if dry_run:
+        if config.dry_run:
             logger.info(f"Saving:        {format_time(save_time)}")
         else:
             logger.info(f"Upload:        {format_time(upload_time)}")
@@ -123,15 +132,16 @@ async def main(dry_run=False):
         sys.exit(1)
 
 
-def save_results_to_folder(results):
+def save_results_to_folder(results, output_dir="cleaned_output"):
     """Save the chunked results to a folder as simple text files.
 
     Args:
         results (list): List of processed chunk results
+        output_dir (str): Directory to save results to
     """
     try:
         # Create the output directory if it doesn't exist
-        output_dir = Path("cleaned_output")
+        output_dir = Path(output_dir)
         output_dir.mkdir(exist_ok=True)
 
         # Clear all existing files in the output directory
@@ -182,6 +192,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Save results to folder instead of uploading to Pinecone",
     )
+    parser.add_argument(
+        "--config",
+        help="Path to YAML configuration file",
+    )
     args = parser.parse_args()
 
-    asyncio.run(main(dry_run=args.dry_run))
+    # Load config from file if specified
+    config = None
+    if args.config:
+        try:
+            config = CrawlerConfig.from_yaml(args.config)
+            if args.dry_run:
+                config.dry_run = True
+        except Exception as e:
+            logger.error(f"Error loading config file: {e}")
+            sys.exit(1)
+
+    asyncio.run(main(dry_run=args.dry_run if not config else config.dry_run))

@@ -11,6 +11,7 @@ This project implements a web crawler that processes content from websites and s
 - JavaScript execution for handling dynamic content
 - Markdown content generation
 - Robust error handling and logging
+- **Flexible configuration system** with environment variables and YAML support
 
 ## Prerequisites
 
@@ -60,36 +61,90 @@ pip install -e .
 
 ## Configuration
 
-The crawler is configured in `crawler/crawl.py` and uses the following key components:
+The crawler supports a flexible configuration system that can be customized through:
 
-- **AsyncWebCrawler**: Main crawler engine from crawl4ai
-- **BFSDeepCrawlStrategy**: Implements breadth-first search for crawling links
-- **LXMLWebScrapingStrategy**: Strategy for extracting content from web pages
-- **LLMContentFilter**: Uses OpenAI models to filter and format content
-- **DefaultMarkdownGenerator**: Generates Markdown from filtered content
+1. **Environment Variables**: Set in `.env` file or system environment
+2. **YAML Configuration Files**: Create custom configurations for different use cases
+3. **Command-line Arguments**: Override settings when running the crawler
 
-Key configuration options:
-- `max_depth`: Controls how deep the crawler will follow links (currently set to 0 for base pages)
-- Content filter instructions for extracting quality content
-- URL processing and canonicalization
-- Batch processing to manage resource usage
+### Configuration Parameters
+
+The configuration system allows you to customize all aspects of the crawler's behavior:
+
+#### Crawler Settings
+- `START_URLS`: Comma-separated list of starting URLs
+- `MAX_DEPTH`: How deep to crawl from starting URLs (0 means only starting URLs)
+- `INCLUDE_EXTERNAL`: Whether to follow links to external domains
+- `BATCH_SIZE`: Number of URLs to process in parallel
+- `EXCLUDED_TAGS`: HTML tags to exclude from processing
+
+#### Content Processing
+- `CHUNK_SIZE`: Size of content chunks for vector storage
+- `CHUNK_OVERLAP_RATIO`: Overlap between chunks to maintain context
+- `SUMMARY_MODEL_NAME`: OpenAI model to use for summarization
+- `SUMMARY_TEMPERATURE`: Temperature setting for generation (lower = more deterministic)
+
+#### Vector Database
+- `CHUNK_ID_PREFIX`: Prefix for chunk IDs in vector database
+- `RECORD_RETENTION_HOURS`: How long to keep old records before deletion
+- `UPSERT_BATCH_SIZE`: Number of records to upsert in each batch
+- `DELETE_OLD_RECORDS`: Whether to delete outdated records
+
+### Example Configuration Files
+
+The `examples/` directory contains sample YAML configurations for different use cases:
+
+- `winery_config.yaml`: Optimized for crawling winery websites
+- `ecommerce_config.yaml`: Configured for e-commerce websites
+
+### Running with Custom Configuration
+
+You can run the orchestrator with a custom YAML configuration:
+
+```bash
+python orchestrator.py --config examples/winery_config.yaml
+```
+
+Or use environment variables with the default settings:
+
+```bash
+# Set environment variables directly
+export START_URLS="https://example.com/page1,https://example.com/page2"
+export MAX_DEPTH=2
+python orchestrator.py
+```
+
+### Running in Dry-Run Mode
+
+To save results locally without uploading to Pinecone:
+
+```bash
+python orchestrator.py --dry-run
+```
+
+## Orchestration Process
+
+The orchestrator runs the complete pipeline:
+
+1. **Crawling**: Fetches content from specified URLs
+2. **Chunking**: Splits content into manageable chunks
+3. **Summarization**: Processes chunks and extracts keywords
+4. **Vector DB Upload**: Uploads processed content to Pinecone (or saves locally in dry-run mode)
 
 ## Usage
 
-To run the crawler:
+To run the complete process:
 
 ```bash
-# Since the package is installed in development mode, you can run it directly
-python -m crawler.crawl
-```
+# Run with default settings
+python orchestrator.py
 
-This will:
-1. Fetch the initial set of links from the specified starting URL
-2. Filter and process these links to find unique internal URLs
-3. Crawl each unique URL in batches
-4. Filter and process the content using the LLM content filter
-5. Generate clean markdown output for each page
-6. Return the processed results
+# Run with custom configuration
+python orchestrator.py --config examples/winery_config.yaml
+
+# Run in dry-run mode (save locally)
+python orchestrator.py --dry-run
+```
 
 ## Production Deployment
 

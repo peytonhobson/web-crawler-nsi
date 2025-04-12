@@ -9,12 +9,13 @@ from chunk_content.chunk_utils import chunk_documents
 from langchain_core.documents import Document
 
 
-def chunk_content(crawl_results):
+def chunk_content(crawl_results, config=None):
     """
     Chunks content from crawl results.
 
     Args:
         crawl_results (list): List of crawl results with markdown content.
+        config: Optional configuration object with chunking parameters.
 
     Returns:
         list: List of chunk objects with content and metadata
@@ -46,8 +47,16 @@ def chunk_content(crawl_results):
     print(f"\nSuccessfully processed {file_count} files")
     print("\n🔪 Chunking documents...")
 
-    # Chunk the documents (using the function from chunk_utils.py)
-    chunks = chunk_documents(docs, chunk_size=500, overlap_ratio=0.2)
+    # Use config parameters if provided
+    chunk_size = 500
+    overlap_ratio = 0.2
+
+    if config:
+        chunk_size = getattr(config, "chunk_size", chunk_size)
+        overlap_ratio = getattr(config, "chunk_overlap_ratio", overlap_ratio)
+
+    # Chunk the documents with configuration parameters
+    chunks = chunk_documents(docs, chunk_size=chunk_size, overlap_ratio=overlap_ratio)
     print(f"Created {len(chunks)} chunks from {len(docs)} documents")
 
     # Return the chunks
