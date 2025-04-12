@@ -12,14 +12,17 @@ This project implements a web crawler that processes content from websites and s
 - Markdown content generation
 - Robust error handling and logging
 - **Flexible configuration system** with environment variables and YAML support
+- **Docker support** for easy deployment in any environment
 
 ## Prerequisites
 
-- Python 3.9+
+- Python 3.9+ (for local development)
 - OpenAI API access (for content filtering)
-- crawl4ai library for web crawling
+- Docker and Docker Compose (for containerized deployment) 
 
 ## Setup
+
+### Option 1: Local Development Setup
 
 1. Clone the repository:
 ```bash
@@ -59,6 +62,43 @@ pip install -e .
      ```
    - Adjust other configuration parameters as needed
 
+### Option 2: Docker Setup (Recommended for Production)
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/web-crawler.git
+cd web-crawler
+```
+
+2. Configure environment variables:
+   - Copy `.env.example` to `.env`
+   - Add your OpenAI API key to the `.env` file:
+     ```
+     OPENAI_API_KEY=your_api_key_here
+     ```
+   - Adjust other configuration parameters as needed
+
+3. Make the deployment script executable:
+```bash
+chmod +x deploy.sh
+```
+
+4. Run the crawler using the deployment script:
+```bash
+./deploy.sh
+```
+
+This will:
+- Create necessary directories
+- Build the Docker image with all dependencies (including browsers)
+- Run the crawler in a container
+
+You can pass any arguments to the script and they'll be forwarded to the orchestrator:
+```bash
+./deploy.sh --dry-run
+./deploy.sh --config examples/winery_config.yaml
+```
+
 ## Configuration
 
 The crawler supports a flexible configuration system that can be customized through:
@@ -78,6 +118,13 @@ The configuration system allows you to customize all aspects of the crawler's be
 - `BATCH_SIZE`: Number of URLs to process in parallel
 - `EXCLUDED_TAGS`: HTML tags to exclude from processing
 
+#### Browser Settings
+- `USE_BROWSER`: Whether to use a browser (true) or HTTP-only mode (false)
+- `BROWSER_TYPE`: Browser engine to use (chromium, firefox, webkit)
+- `HEADLESS`: Whether to run the browser in headless mode
+- `LIGHT_MODE`: Performance optimization for low-resource environments
+- `TEXT_MODE`: Skip loading images to improve performance
+
 #### Content Processing
 - `CHUNK_SIZE`: Size of content chunks for vector storage
 - `CHUNK_OVERLAP_RATIO`: Overlap between chunks to maintain context
@@ -96,12 +143,17 @@ The `examples/` directory contains sample YAML configurations for different use 
 
 - `winery_config.yaml`: Optimized for crawling winery websites
 - `ecommerce_config.yaml`: Configured for e-commerce websites
+- `render_config.yaml`: Optimized for deployment on Render (uses HTTP-only mode)
 
 ### Running with Custom Configuration
 
 You can run the orchestrator with a custom YAML configuration:
 
 ```bash
+# With Docker:
+./deploy.sh --config examples/winery_config.yaml
+
+# Without Docker:
 python orchestrator.py --config examples/winery_config.yaml
 ```
 
@@ -119,7 +171,48 @@ python orchestrator.py
 To save results locally without uploading to Pinecone:
 
 ```bash
+# With Docker:
+./deploy.sh --dry-run
+
+# Without Docker:
 python orchestrator.py --dry-run
+```
+
+## Docker Customization
+
+The Docker setup provides several ways to customize the crawler:
+
+### Environment Variables
+
+You can override any environment variable in the `docker-compose.yml` file:
+
+```yaml
+environment:
+  - OPENAI_API_KEY=your_api_key_here
+  - START_URLS=https://example.com/page1,https://example.com/page2
+  - MAX_DEPTH=2
+  - USE_BROWSER=true
+```
+
+### Mounted Volumes
+
+The Docker Compose configuration mounts the following directories:
+
+- `./cleaned_output:/app/cleaned_output`: Stores processed content
+- `./logs:/app/logs`: Stores log files
+
+These directories will persist between container runs.
+
+### Custom Commands
+
+You can run custom commands with Docker Compose:
+
+```bash
+# Run with a specific config file
+docker-compose run --rm crawler python orchestrator.py --config examples/winery_config.yaml
+
+# Run in dry-run mode
+docker-compose run --rm crawler python orchestrator.py --dry-run
 ```
 
 ## Orchestration Process

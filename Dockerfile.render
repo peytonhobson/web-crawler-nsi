@@ -1,0 +1,23 @@
+# Use the official Playwright image as base (includes browsers pre-installed)
+FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+
+WORKDIR /app
+
+# Copy application code
+COPY . .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install -e .
+
+# Create directories on the persistent disk
+RUN mkdir -p /var/data/output /var/data/logs
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    USE_BROWSER=true \
+    OUTPUT_DIR=/var/data/output \
+    LOGS_DIR=/var/data/logs
+
+# Default command with Render-optimized settings
+CMD ["python", "orchestrator.py"] 

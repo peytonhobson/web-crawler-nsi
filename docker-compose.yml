@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Use Render's persistent disk mount location when available
+      - ${RENDER_VOLUME_PATH:-./cleaned_output}:/app/cleaned_output
+      - ${RENDER_VOLUME_PATH:-./logs}:/app/logs
+      # For local development:
+      - ./:/app
+    env_file:
+      - .env
+    environment:
+      # Override any environment variables here
+      - PYTHONUNBUFFERED=1
+      - USE_BROWSER=true
+      - OUTPUT_DIR=/app/cleaned_output
+      - LOGS_DIR=/app/logs
+    # Default command can be overridden on the command line
+    command: python orchestrator.py
+    # Examples for local development: 
+    # docker-compose run crawler python orchestrator.py --dry-run
+    # docker-compose run crawler python orchestrator.py --config examples/winery_config.yaml 

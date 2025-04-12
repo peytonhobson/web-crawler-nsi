@@ -1,0 +1,25 @@
+# Render Blueprint file
+services:
+  # Web Crawler background worker service
+  - type: cron
+    name: web-crawler
+    plan: starter
+    env: docker
+    dockerfilePath: ./Dockerfile.render  # Use our custom Dockerfile for Render
+    schedule: "0 9 */2 * *"  # Run at 9 AM UTC every 2 days
+    # No need for build/start commands - Docker handles this
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: USE_BROWSER
+        value: "true"
+      # The following env vars should be set in the Render dashboard:
+      # - OPENAI_API_KEY
+      # - START_URLS
+      # - PINECONE_API_KEY (if using Pinecone)
+      # - PINECONE_INDEX_NAME (if using Pinecone)
+    disk:
+      name: crawler-data
+      mountPath: /var/data
+      sizeGB: 5
+    autoDeploy: false  # Set to true for automatic deploys on push 
