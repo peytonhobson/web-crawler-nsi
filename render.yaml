@@ -3,7 +3,7 @@ services:
   # Web Crawler background worker service
   - type: cron
     name: web-crawler
-    plan: starter
+    plan: standard
     env: node # Using Node instead of Docker
     buildCommand: |
       # Install dependencies
