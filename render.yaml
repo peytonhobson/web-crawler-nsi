@@ -21,4 +21,4 @@ services:
         sync: false
       - key: PINECONE_INDEX_NAME
         sync: false
-    autoDeploy: false  # Set to true for automatic deploys on push 
+    autoDeploy: true
