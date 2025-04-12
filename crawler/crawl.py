@@ -29,9 +29,6 @@ async def crawl(config: CrawlerConfig = None):
     Returns:
         list: Processed content results with duplicates removed.
     """
-    if config is None:
-        config = CrawlerConfig.from_environment()
-
     if "OPENAI_API_KEY" not in os.environ:
         print("⚠️  OPENAI_API_KEY environment variable is not set.")
         return None
@@ -42,9 +39,9 @@ async def crawl(config: CrawlerConfig = None):
 
     crawler_link_config = CrawlerRunConfig(
         deep_crawl_strategy=deep_crawl,
-        exclude_external_links=config.exclude_external_links,
-        exclude_social_media_links=config.exclude_social_media_links,
-        exclude_external_images=config.exclude_external_images,
+        exclude_external_links=True,
+        exclude_social_media_links=True,
+        exclude_external_images=True,
         verbose=config.verbose,
         js_code=[get_hidden_elements_removal_js()],
     )
