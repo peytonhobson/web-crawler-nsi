@@ -44,7 +44,7 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        js_code=[get_hidden_elements_removal_js()],
+        js_code=[get_hidden_elements_removal_js(), get_universal_structure_fix_js()],
     )
 
     openai_config = LLMConfig(
@@ -71,7 +71,7 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        js_code=[get_hidden_elements_removal_js()],
+        js_code=[get_hidden_elements_removal_js(), get_universal_structure_fix_js()],
     )
 
     unique_links = set()
@@ -214,5 +214,64 @@ def get_hidden_elements_removal_js():
                 }
             }
         }
+    })();
+    """
+
+
+def get_universal_structure_fix_js():
+    """Return JavaScript that detects and fixes inverted content structures across various site builders.
+
+    This script runs in the browser context to identify and reorder elements where content
+    appears before its logical heading - a common issue in sites built with visual builders
+    like Wix, Squarespace, etc.
+    """
+    return """
+    (async () => {
+        function isLikelyHeading(el) {
+            if (!el) return false;
+            const text = el.textContent.trim();
+            if (!text || text.length > 120) return false;
+
+            if (el.querySelector('h1,h2,h3,h4,h5,h6')) return true;
+
+            const style = window.getComputedStyle(el);
+            const fontSize = parseFloat(style.fontSize);
+            const fontWeight = parseInt(style.fontWeight);
+
+            return (fontSize >= 17 || fontWeight >= 600);
+        }
+
+        function isLikelyContent(el) {
+            if (!el) return false;
+            const text = el.textContent.trim();
+            if (text.length > 150) return true;
+            if (el.querySelectorAll('p, ul, ol, li').length >= 3) return true;
+
+            return false;
+        }
+
+        // Go through all containers
+        document.querySelectorAll('div, section, article').forEach(container => {
+            const children = Array.from(container.children);
+            for (let i = 0; i < children.length - 1; i++) {
+                const current = children[i];
+                const next = children[i + 1];
+
+                if (
+                    isLikelyContent(current) &&
+                    isLikelyHeading(next) &&
+                    !(i > 0 && isLikelyHeading(children[i - 1]))
+                ) {
+                    try {
+                        container.insertBefore(next, current);
+                    } catch (e) {
+                        // fallback in case insertBefore fails
+                        const temp = next.cloneNode(true);
+                        container.insertBefore(temp, current);
+                        next.remove();
+                    }
+                }
+            }
+        });
     })();
     """
