@@ -206,36 +206,7 @@ def get_hidden_elements_removal_js():
             return false;
         }
 
-        function normalizeFlexContainers() {
-            const flexContainers = document.querySelectorAll('*');
-            for (const container of flexContainers) {
-                const style = window.getComputedStyle(container);
-                if (style.display === 'flex' && style.flexDirection.includes('reverse')) {
-                    // Create a new container to hold the normalized content
-                    const newContainer = document.createElement('div');
-                    newContainer.style.display = 'flex';
-                    newContainer.style.flexDirection = 'row';
-                    
-                    // Get all child nodes in reverse order
-                    const children = Array.from(container.childNodes);
-                    children.reverse();
-                    
-                    // Append children in reverse order to maintain logical content flow
-                    for (const child of children) {
-                        newContainer.appendChild(child.cloneNode(true));
-                    }
-                    
-                    // Replace the original container with the normalized one
-                    container.parentNode.replaceChild(newContainer, container);
-                }
-            }
-        }
-
         if (document.body) {
-            // First normalize flex containers
-            normalizeFlexContainers();
-            
-            // Then remove hidden elements
             const elements = document.body.querySelectorAll('*');
             for (let el of elements) {
                 if (isElementHidden(el)) {
