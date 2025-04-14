@@ -80,7 +80,7 @@ async def crawl(config: CrawlerConfig = None):
     # Set up a fixed browser configuration that works well in containerized environments
     browser_config = BrowserConfig(
         browser_type="chromium",
-        headless=False,
+        headless=True,
         light_mode=True,
         text_mode=True,
         ignore_https_errors=True,
