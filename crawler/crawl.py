@@ -9,7 +9,6 @@ from crawl4ai import (
     LLMContentFilter,
     LLMConfig,
     DefaultMarkdownGenerator,
-    BrowserConfig,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
@@ -33,18 +32,6 @@ async def crawl(config: CrawlerConfig = None):
     if "OPENAI_API_KEY" not in os.environ:
         print("⚠️  OPENAI_API_KEY environment variable is not set.")
         return None
-
-    # Set up a fixed browser configuration that works well in containerized environments
-    browser_config = BrowserConfig(
-        browser_type="chromium",
-        headless=False,
-        light_mode=True,
-        text_mode=True,
-        ignore_https_errors=True,
-        viewport_width=1280,
-        viewport_height=720,
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    )
 
     deep_crawl = BFSDeepCrawlStrategy(
         max_depth=config.max_depth, include_external=config.include_external
@@ -89,7 +76,7 @@ async def crawl(config: CrawlerConfig = None):
     unique_links = set()
     all_results = []
 
-    async with AsyncWebCrawler(config=browser_config) as crawler:
+    async with AsyncWebCrawler() as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
             raise ValueError("No start URLs provided in configuration")
@@ -205,7 +192,37 @@ def get_hidden_elements_removal_js():
             }
             return false;
         }
+
+        function normalizeFlexContainers() {
+            const flexContainers = document.querySelectorAll('*');
+            for (const container of flexContainers) {
+                const style = window.getComputedStyle(container);
+                if (style.display === 'flex' && style.flexDirection.includes('reverse')) {
+                    // Create a new container to hold the normalized content
+                    const newContainer = document.createElement('div');
+                    newContainer.style.display = 'flex';
+                    newContainer.style.flexDirection = 'row';
+                    
+                    // Get all child nodes in reverse order
+                    const children = Array.from(container.childNodes);
+                    children.reverse();
+                    
+                    // Append children in reverse order to maintain logical content flow
+                    for (const child of children) {
+                        newContainer.appendChild(child.cloneNode(true));
+                    }
+                    
+                    // Replace the original container with the normalized one
+                    container.parentNode.replaceChild(newContainer, container);
+                }
+            }
+        }
+
         if (document.body) {
+            // First normalize flex containers
+            normalizeFlexContainers();
+            
+            // Then remove hidden elements
             const elements = document.body.querySelectorAll('*');
             for (let el of elements) {
                 if (isElementHidden(el)) {

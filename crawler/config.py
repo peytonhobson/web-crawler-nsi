@@ -35,7 +35,7 @@ class CrawlerConfig:
         - Create concise, scannable bulleted lists for important details
         - Organize content logically by topic
         - Preserve exact pricing, dates, hours, and contact information
-        - Combine related content into cohesive paragraphs
+        - Don't rely on the order of the content in the page to determine the order of the content in the output. If the content is out of order, rearrange it to be in the correct order.
         
         Exclude:
         - ALL navigation links and menu items
