@@ -9,6 +9,7 @@ from crawl4ai import (
     LLMContentFilter,
     LLMConfig,
     DefaultMarkdownGenerator,
+    BrowserConfig,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
@@ -76,7 +77,19 @@ async def crawl(config: CrawlerConfig = None):
     unique_links = set()
     all_results = []
 
-    async with AsyncWebCrawler() as crawler:
+    # Set up a fixed browser configuration that works well in containerized environments
+    browser_config = BrowserConfig(
+        browser_type="chromium",
+        headless=False,
+        light_mode=True,
+        text_mode=True,
+        ignore_https_errors=True,
+        viewport_width=1280,
+        viewport_height=720,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    )
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
             raise ValueError("No start URLs provided in configuration")
