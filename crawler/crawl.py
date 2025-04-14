@@ -8,7 +8,6 @@ from crawl4ai import (
     LLMContentFilter,
     LLMConfig,
     DefaultMarkdownGenerator,
-    BrowserConfig,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
@@ -43,12 +42,9 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        js_code=[
-            get_hidden_elements_removal_js(),
-            get_universal_structure_fix_js(),
-            get_revolution_slider_extraction_js(),
-            get_stats_extraction_js(),
-        ],
+        delay_before_return_html=2.5,
+        scan_full_page=True,
+        js_code=[get_hidden_elements_removal_js()],
     )
 
     openai_config = LLMConfig(
@@ -75,28 +71,16 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
+        delay_before_return_html=2,
+        scan_full_page=True,
         js_code=[
             get_hidden_elements_removal_js(),
             get_universal_structure_fix_js(),
-            get_revolution_slider_extraction_js(),
-            get_stats_extraction_js(),
         ],
     )
 
     unique_links = set()
     all_results = []
-
-    # Set up a fixed browser configuration that works well in containerized environments
-    browser_config = BrowserConfig(
-        browser_type="chromium",
-        headless=True,
-        light_mode=True,
-        text_mode=True,
-        ignore_https_errors=True,
-        viewport_width=1280,
-        viewport_height=720,
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    )
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         # If no specific start URLs are provided, use a default
@@ -230,12 +214,14 @@ def get_hidden_elements_removal_js():
 def get_universal_structure_fix_js():
     """Return JavaScript that detects and fixes inverted content structures across various site builders.
 
-    This script runs in the browser context to identify and reorder elements where content
-    appears before its logical heading - a common issue in sites built with visual builders
+    This script runs in the browser context to identify and reorder elements where content appears before its logical heading - a common issue in sites built with visual builders
     like Wix, Squarespace, etc.
     """
     return """
     (async () => {
+        const baseTextSize = document.documentElement.style.fontSize;
+        const baseTextSizePx = parseFloat(baseTextSize);
+        
         function isLikelyHeading(el) {
             if (!el) return false;
             const text = el.textContent.trim();
@@ -247,7 +233,7 @@ def get_universal_structure_fix_js():
             const fontSize = parseFloat(style.fontSize);
             const fontWeight = parseInt(style.fontWeight);
 
-            return (fontSize >= 17 || fontWeight >= 600);
+            return (fontSize >= baseTextSizePx * 1.2 || fontWeight >= 600);
         }
 
         function isLikelyContent(el) {
@@ -282,145 +268,5 @@ def get_universal_structure_fix_js():
                 }
             }
         });
-    })();
-    """
-
-
-def get_revolution_slider_extraction_js():
-    """Return JavaScript that extracts content from Revolution Slider <rs-layer> tags and formats it properly.
-
-    This script runs in the browser context to extract text from Revolution Slider layers,
-    wrap them in appropriate HTML tags, and append them to the DOM for proper content extraction.
-    """
-    return """
-    (async () => {
-        // Wait for minimum content to load
-        async function waitForContent() {
-            const maxAttempts = 10;
-            const minLayers = 5;  // Minimum number of rs-layers to consider content loaded
-            
-            for (let i = 0; i < maxAttempts; i++) {
-                const layers = document.querySelectorAll('rs-layer');
-                if (layers.length >= minLayers) {
-                    return true;
-                }
-                await new Promise(r => setTimeout(r, 1000));  // Check every second
-            }
-            return false;
-        }
-        
-        // Wait for content to load
-        const contentLoaded = await waitForContent();
-        if (!contentLoaded) {
-            console.warn('Revolution Slider content did not load within timeout');
-        }
-        
-        // Create a container for extracted content
-        const contentContainer = document.createElement('div');
-        contentContainer.id = 'extracted-slider-content';
-        contentContainer.style.position = 'absolute';
-        contentContainer.style.left = '0';
-        contentContainer.style.top = '0';
-        contentContainer.style.zIndex = '9999';
-        contentContainer.style.backgroundColor = 'white';
-        contentContainer.style.padding = '20px';
-        contentContainer.style.margin = '20px';
-        contentContainer.style.border = '1px solid #ccc';
-        
-        // Extract and format content from all rs-layers
-        document.querySelectorAll('rs-layer').forEach(layer => {
-            const text = layer.innerText.trim();
-            if (text) {
-                // Create a paragraph for the content
-                const p = document.createElement('p');
-                p.textContent = text;
-                
-                // Copy relevant styles for semantic understanding
-                const style = window.getComputedStyle(layer);
-                if (parseFloat(style.fontSize) >= 24 || parseInt(style.fontWeight) >= 600) {
-                    // Likely a heading
-                    const h = document.createElement('h2');
-                    h.textContent = text;
-                    contentContainer.appendChild(h);
-                } else {
-                    // Regular content
-                    contentContainer.appendChild(p);
-                }
-            }
-        });
-        
-        // Append the formatted content to the body
-        if (contentContainer.children.length > 0) {
-            document.body.appendChild(contentContainer);
-            
-            // Ensure the content is visible to the DOM extractor
-            contentContainer.scrollIntoView();
-        }
-    })();
-    """
-
-
-def get_stats_extraction_js():
-    """Return JavaScript that extracts and formats statistics from the page.
-
-    This script runs in the browser context to find statistics (numbers with labels),
-    group them together, and format them for proper content extraction.
-    """
-    return """
-    (async () => {
-        function waitForNonZeroStats(maxRetries = 10, delay = 1000) {
-            return new Promise((resolve) => {
-                let attempt = 0;
-                const check = () => {
-                    const elements = Array.from(document.querySelectorAll('*'));
-                    const hasNonZeroValues = elements.some(el => {
-                        const dataValue = el.getAttribute("data-counter-value");
-                        return dataValue && !isNaN(dataValue) && parseInt(dataValue) > 0;
-                    });
-                    
-                    if (hasNonZeroValues || attempt >= maxRetries) {
-                        resolve();
-                    } else {
-                        attempt++;
-                        setTimeout(check, delay);
-                    }
-                };
-                check();
-            });
-        }
-
-        await waitForNonZeroStats();
-
-        const container = document.createElement('div');
-        container.id = 'extracted-stats-content';
-        container.style.display = 'block';
-
-        // Find all elements with data-counter-value
-        const statElements = Array.from(document.querySelectorAll('[data-counter-value]'));
-        
-        statElements.forEach(el => {
-            const value = el.getAttribute("data-counter-value");
-            if (value && !isNaN(value)) {
-                // Find the associated label (usually in a nearby element)
-                const labelEl = el.closest('.stat-item, .counter, .summary-item, .vc_column-inner, .stats-box');
-                if (labelEl) {
-                    // Get all text content from the container, excluding the number itself
-                    const containerText = labelEl.innerText.trim();
-                    const numberText = el.innerText.trim();
-                    const labelText = containerText.replace(numberText, '').trim();
-                    
-                    if (labelText) {
-                        const p = document.createElement('p');
-                        p.textContent = `${labelText} - ${value}`;
-                        container.appendChild(p);
-                    }
-                }
-            }
-        });
-
-        if (container.children.length > 0) {
-            document.body.appendChild(container);
-            container.scrollIntoView();
-        }
     })();
     """
