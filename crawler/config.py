@@ -20,10 +20,12 @@ class CrawlerConfig:
     batch_size: int = 20
 
     # Content filtering
-    excluded_tags: List[str] = field(default_factory=lambda: ["footer", "nav"])
+    excluded_tags: List[str] = field(
+        default_factory=lambda: ["footer", "nav", "header"]
+    )
 
     # LLM settings
-    llm_provider: str = "openai/gpt-4o-mini"
+    llm_provider: str = "openai/gpt-4.1-nano"
     llm_instruction: str = """
         You are an assistant who is an expert at filtering content extracted from websites. You are given a page from a website.
         Your task is to extract ONLY substantive content that provides real value to customers visiting the website.
@@ -52,9 +54,8 @@ class CrawlerConfig:
     chunk_overlap_ratio: float = 0.2
 
     # Summarization parameters
-    summary_model_name: str = "gpt-4o-mini"
+    summary_model_name: str = "gpt-4.1-nano"
     summary_temperature: float = 0.3
-    summary_max_tokens: int = 800
     summary_max_workers: int = 10
 
     # Vector DB parameters

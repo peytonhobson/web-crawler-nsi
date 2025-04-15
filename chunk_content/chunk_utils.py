@@ -1,6 +1,5 @@
 import spacy
 from langchain_core.documents import Document
-import datetime
 import sys
 
 # Load spaCy model
@@ -42,7 +41,7 @@ def chunk_documents(docs, chunk_size=700, overlap_ratio=0.3):
             # Check if adding this sentence exceeds chunk size
             if current_length + sent_length > chunk_size and current_chunk:
                 # Save current chunk
-                chunk_text = "".join(current_chunk)
+                chunk_text = "\n\n".join(current_chunk)
                 chunks.append(chunk_text)
 
                 # Create overlap with some previous sentences if needed
@@ -69,7 +68,7 @@ def chunk_documents(docs, chunk_size=700, overlap_ratio=0.3):
 
         # Add final chunk if it exists
         if current_chunk:
-            chunk_text = "".join(current_chunk)
+            chunk_text = "\n\n".join(current_chunk)
             chunks.append(chunk_text)
 
         # Create Document objects for each chunk

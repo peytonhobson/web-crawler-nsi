@@ -146,7 +146,7 @@ def save_results_to_folder(results, output_dir="cleaned_output"):
 
         # Clear all existing files in the output directory
         logger.info(f"Clearing existing files in {output_dir}")
-        existing_files = list(output_dir.glob("*.txt"))
+        existing_files = list(output_dir.glob("*.md"))
         if existing_files:
             for file in existing_files:
                 try:
@@ -168,7 +168,7 @@ def save_results_to_folder(results, output_dir="cleaned_output"):
             )
 
             # Create filename with index for uniqueness
-            filename = f"{page_path_part}.txt"
+            filename = f"{page_path_part}.md"
             file_path = output_dir / filename
 
             # Write the content to the file
