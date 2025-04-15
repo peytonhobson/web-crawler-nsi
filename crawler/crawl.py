@@ -4,6 +4,7 @@ from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
 from crawl4ai import (
     AsyncWebCrawler,
+    BrowserConfig,
     CrawlerRunConfig,
     LLMContentFilter,
     LLMConfig,
@@ -81,7 +82,15 @@ async def crawl(config: CrawlerConfig = None):
     unique_links = set()
     all_results = []
 
-    async with AsyncWebCrawler() as crawler:
+    browser_config = BrowserConfig(
+        browser_type="chromium",
+        headless=True,
+        light_mode=True,
+        text_mode=True,
+        ignore_https_errors=True,
+    )
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
             raise ValueError("No start URLs provided in configuration")
