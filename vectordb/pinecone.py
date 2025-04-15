@@ -364,11 +364,11 @@ def upload_chunks(chunks, config=None):
         delete_old_records=delete_old_records,
     )
 
-    upserted_count = uploader.upsert_records(chunks)
-    logger.info(f"Upserted {upserted_count} records")
-
     deleted_count = uploader.delete_older_than_retention_period()
     logger.info(f"Deleted {deleted_count} old records")
+
+    upserted_count = uploader.upsert_records(chunks)
+    logger.info(f"Upserted {upserted_count} records")
 
     logger.info(
         f"Operation complete: {upserted_count} records upserted, "
