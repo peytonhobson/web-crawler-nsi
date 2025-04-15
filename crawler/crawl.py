@@ -42,7 +42,7 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        delay_before_return_html=2.5,
+        delay_before_return_html=2,
         scan_full_page=True,
         js_code=[get_hidden_elements_removal_js()],
     )
@@ -64,7 +64,6 @@ async def crawl(config: CrawlerConfig = None):
         # Use unique links to crawl at a depth of 0
         # TODO: Convert to non-deep crawl strategy for better performance
         deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=0, include_external=False),
-        # Remove LXMLWebScrapingStrategy to use fully rendered DOM
         markdown_generator=md_generator,
         excluded_tags=config.excluded_tags,
         exclude_external_links=True,
@@ -82,7 +81,7 @@ async def crawl(config: CrawlerConfig = None):
     unique_links = set()
     all_results = []
 
-    async with AsyncWebCrawler(config=browser_config) as crawler:
+    async with AsyncWebCrawler() as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
             raise ValueError("No start URLs provided in configuration")
