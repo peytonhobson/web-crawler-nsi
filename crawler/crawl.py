@@ -5,11 +5,9 @@ from dotenv import load_dotenv
 from crawl4ai import (
     AsyncWebCrawler,
     CrawlerRunConfig,
-    LXMLWebScrapingStrategy,
     LLMContentFilter,
     LLMConfig,
     DefaultMarkdownGenerator,
-    BrowserConfig,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
@@ -44,6 +42,8 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
+        delay_before_return_html=2,
+        scan_full_page=True,
         js_code=[get_hidden_elements_removal_js()],
     )
 
@@ -64,32 +64,24 @@ async def crawl(config: CrawlerConfig = None):
         # Use unique links to crawl at a depth of 0
         # TODO: Convert to non-deep crawl strategy for better performance
         deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=0, include_external=False),
-        scraping_strategy=LXMLWebScrapingStrategy(),
         markdown_generator=md_generator,
         excluded_tags=config.excluded_tags,
         exclude_external_links=True,
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        js_code=[get_hidden_elements_removal_js()],
+        delay_before_return_html=2,
+        scan_full_page=True,
+        js_code=[
+            get_hidden_elements_removal_js(),
+            get_universal_structure_fix_js(),
+        ],
     )
 
     unique_links = set()
     all_results = []
 
-    # Set up a fixed browser configuration that works well in containerized environments
-    browser_config = BrowserConfig(
-        browser_type="chromium",
-        headless=True,
-        light_mode=True,
-        text_mode=True,
-        ignore_https_errors=True,
-        viewport_width=1280,
-        viewport_height=720,
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    )
-
-    async with AsyncWebCrawler(config=browser_config) as crawler:
+    async with AsyncWebCrawler() as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
             raise ValueError("No start URLs provided in configuration")
@@ -214,5 +206,66 @@ def get_hidden_elements_removal_js():
                 }
             }
         }
+    })();
+    """
+
+
+def get_universal_structure_fix_js():
+    """Return JavaScript that detects and fixes inverted content structures across various site builders.
+
+    This script runs in the browser context to identify and reorder elements where content appears before its logical heading - a common issue in sites built with visual builders
+    like Wix, Squarespace, etc.
+    """
+    return """
+    (async () => {
+        const baseTextSize = document.documentElement.style.fontSize;
+        const baseTextSizePx = parseFloat(baseTextSize);
+        
+        function isLikelyHeading(el) {
+            if (!el) return false;
+            const text = el.textContent.trim();
+            if (!text || text.length > 120) return false;
+
+            if (el.querySelector('h1,h2,h3,h4,h5,h6')) return true;
+
+            const style = window.getComputedStyle(el);
+            const fontSize = parseFloat(style.fontSize);
+            const fontWeight = parseInt(style.fontWeight);
+
+            return (fontSize >= baseTextSizePx * 1.2 || fontWeight >= 600);
+        }
+
+        function isLikelyContent(el) {
+            if (!el) return false;
+            const text = el.textContent.trim();
+            if (text.length > 150) return true;
+            if (el.querySelectorAll('p, ul, ol, li').length >= 3) return true;
+
+            return false;
+        }
+
+        // Go through all containers
+        document.querySelectorAll('div, section, article').forEach(container => {
+            const children = Array.from(container.children);
+            for (let i = 0; i < children.length - 1; i++) {
+                const current = children[i];
+                const next = children[i + 1];
+
+                if (
+                    isLikelyContent(current) &&
+                    isLikelyHeading(next) &&
+                    !(i > 0 && isLikelyHeading(children[i - 1]))
+                ) {
+                    try {
+                        container.insertBefore(next, current);
+                    } catch (e) {
+                        // fallback in case insertBefore fails
+                        const temp = next.cloneNode(true);
+                        container.insertBefore(temp, current);
+                        next.remove();
+                    }
+                }
+            }
+        });
     })();
     """
