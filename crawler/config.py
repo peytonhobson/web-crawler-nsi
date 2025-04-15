@@ -17,7 +17,6 @@ class CrawlerConfig:
     start_urls: List[str] = field(default_factory=list)
     max_depth: int = 3
     include_external: bool = False
-    batch_size: int = 20
 
     # Content filtering
     excluded_tags: List[str] = field(

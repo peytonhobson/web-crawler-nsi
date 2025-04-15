@@ -62,9 +62,6 @@ async def crawl(config: CrawlerConfig = None):
     md_generator = DefaultMarkdownGenerator(content_filter=content_filter)
 
     crawler_config = CrawlerRunConfig(
-        # Use unique links to crawl at a depth of 0
-        # TODO: Convert to non-deep crawl strategy for better performance
-        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=0, include_external=False),
         markdown_generator=md_generator,
         excluded_tags=config.excluded_tags,
         exclude_external_links=True,
@@ -112,42 +109,11 @@ async def crawl(config: CrawlerConfig = None):
 
         print(f"Found {len(unique_links)} unique links.")
 
-        # Define a helper function to crawl a single URL
-        async def crawl_url(url):
-            try:
-                results = await crawler.arun(url, config=crawler_config)
-                print(f"Completed: {url}")
-                return results
-            except Exception as e:
-                print(f"Error crawling {url}: {e}")
-                return []
-
-        # Process URLs in batches
-        batch_size = config.batch_size
+        # Convert set to list of URLs
         url_list = list(unique_links)
-        total_batches = (len(url_list) + batch_size - 1) // batch_size
 
-        print(f"Processing URLs in {total_batches} batches of {batch_size}")
-
-        for batch_num in range(total_batches):
-            start_idx = batch_num * batch_size
-            end_idx = min(start_idx + batch_size, len(url_list))
-            batch_urls = url_list[start_idx:end_idx]
-
-            print(
-                f"Processing batch {batch_num + 1}/{total_batches} "
-                f"with {len(batch_urls)} URLs"
-            )
-
-            # Use asyncio.gather to process batch of URLs in parallel
-            tasks = [crawl_url(url) for url in batch_urls]
-            results_list = await asyncio.gather(*tasks)
-
-            # Flatten results from this batch
-            for results in results_list:
-                all_results.extend(results)
-
-            print(f"Completed batch {batch_num + 1}/{total_batches}")
+        results = await crawler.arun_many(urls=url_list, config=crawler_config)
+        all_results.extend(results)
 
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
