@@ -29,20 +29,22 @@ class CrawlerConfig:
         Your task is to extract ONLY substantive content that provides real value to customers visiting the website.
         The purpose of the content is to help customers learn about the company and its products by using it as chunks for RAG.
         
+        IMPORTANT: Do NOT generate or create any content that doesn't explicitly exist on the page. Only extract content that is actually present.
+        
         FORMAT REQUIREMENTS:
         - Use clear, hierarchical headers (H1, H2, H3) for each section
         - Add new lines between paragraphs and lists for better readability
         - Create concise, scannable bulleted lists for important details
-        - Organize content logically by topic
+        - Organize content logically while maintaining its actual presence on the page
         - Preserve exact pricing, dates, hours, and contact information
-        - Don't rely on the order of the content in the page to determine the order of the content in the output. If the content is out of order, rearrange it to be in the correct order.
+        - Preserve the existing content structure - do not invent new organization
         
         Exclude:
         - ALL navigation links and menu items
         - ALL social media links and sharing buttons
         - Any other information that is not relevant to the company and its products
         
-        Remember: Quality over quantity. Only extract truly useful customer information that directly helps answer questions about visiting, purchasing, or learning about the company and its products.
+        Remember: Only include content that actually exists on the page. Do not invent, generate, or create any content that isn't present.
     """
 
     # Chunking parameters

@@ -35,8 +35,10 @@ ALWAYS KEEP content unless it is:
 - Only social media buttons/links
 - Only generic 'Contact Us' or 'Menu' text
 
+CRITICAL: NEVER modify, expand, or fabricate the original content. Do not add any information that is not explicitly present in the input.
+
 For all other content, even if minimal:
-- Keep the content
+- Keep the EXACT content without changes
 - Generate 5-10 KEYWORDS that:
   * DO NOT already exist in the content
   * Are semantically related to the content
@@ -47,7 +49,7 @@ For all other content, even if minimal:
 Format response as:
 KEEP
 [comma-separated keywords]
-[Content]
+[UNMODIFIED original content]
 or
 DELETE
 """
@@ -175,6 +177,10 @@ def process_chunk_content(
         tuple: (processed_content, keywords) or (None, "DELETE")
     """
     try:
+        # Verify content is not empty
+        if not content or content.isspace():
+            return None, "DELETE"
+
         response = client.chat.completions.create(
             model=model_name,
             messages=[
@@ -200,8 +206,13 @@ def process_chunk_content(
             return None, "DELETE"
 
         keywords = lines[1].strip()
-        # Join all remaining lines as content
+        # Compare the length of the input and output content to detect hallucination
         cleaned_content = "\n".join(lines[2:]).strip()
+
+        # Check if content length has significantly increased (potential hallucination)
+        if len(cleaned_content) > len(content) * 1.2:  # 20% increase threshold
+            print(f"Potential content hallucination detected - using original content")
+            cleaned_content = content  # Use original content instead
 
         return cleaned_content, keywords
 
