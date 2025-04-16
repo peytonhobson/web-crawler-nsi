@@ -7,6 +7,7 @@ import yaml
 import json
 from dataclasses import dataclass, field
 from typing import List
+from dotenv import load_dotenv
 
 
 @dataclass
@@ -44,9 +45,12 @@ class CrawlerConfig:
         - ALL navigation links and menu items
         - ALL social media links and sharing buttons
         - Any other information that is not relevant to the company and its products
+        - ALL images
         
         Remember: Only include content that actually exists on the page. Do not invent, generate, or create any content that isn't present.
     """
+    chunk_token_threshold: int = 400
+    overlap_rate: float = 0.2
 
     # Chunking parameters
     chunk_size: int = 500
@@ -77,85 +81,92 @@ class CrawlerConfig:
         config = cls()
 
         # Process START_URLS (comma-separated string to list)
-        if os.getenv("START_URLS"):
+        if "START_URLS" in os.environ:
             config.start_urls = [
-                url.strip() for url in os.getenv("START_URLS").split(",")
+                url.strip() for url in os.environ["START_URLS"].split(",")
             ]
 
         # Process numeric values
-        if os.getenv("MAX_DEPTH"):
-            config.max_depth = int(os.getenv("MAX_DEPTH"))
+        if "MAX_DEPTH" in os.environ:
+            config.max_depth = int(os.environ["MAX_DEPTH"])
 
-        if os.getenv("BATCH_SIZE"):
-            config.batch_size = int(os.getenv("BATCH_SIZE"))
+        if "BATCH_SIZE" in os.environ:
+            config.batch_size = int(os.environ["BATCH_SIZE"])
 
-        if os.getenv("CHUNK_SIZE"):
-            config.chunk_size = int(os.getenv("CHUNK_SIZE"))
+        if "CHUNK_SIZE" in os.environ:
+            config.chunk_size = int(os.environ["CHUNK_SIZE"])
 
-        if os.getenv("CHUNK_OVERLAP_RATIO"):
-            config.chunk_overlap_ratio = float(os.getenv("CHUNK_OVERLAP_RATIO"))
+        if "CHUNK_OVERLAP_RATIO" in os.environ:
+            config.chunk_overlap_ratio = float(os.environ["CHUNK_OVERLAP_RATIO"])
 
         # Summarization parameters
-        if os.getenv("SUMMARY_MODEL_NAME"):
-            config.summary_model_name = os.getenv("SUMMARY_MODEL_NAME")
+        if "SUMMARY_MODEL_NAME" in os.environ:
+            config.summary_model_name = os.environ["SUMMARY_MODEL_NAME"]
 
-        if os.getenv("SUMMARY_TEMPERATURE"):
-            config.summary_temperature = float(os.getenv("SUMMARY_TEMPERATURE"))
+        if "SUMMARY_TEMPERATURE" in os.environ:
+            config.summary_temperature = float(os.environ["SUMMARY_TEMPERATURE"])
 
-        if os.getenv("SUMMARY_MAX_TOKENS"):
-            config.summary_max_tokens = int(os.getenv("SUMMARY_MAX_TOKENS"))
+        if "SUMMARY_MAX_TOKENS" in os.environ:
+            config.summary_max_tokens = int(os.environ["SUMMARY_MAX_TOKENS"])
 
-        if os.getenv("SUMMARY_MAX_WORKERS"):
-            config.summary_max_workers = int(os.getenv("SUMMARY_MAX_WORKERS"))
+        if "SUMMARY_MAX_WORKERS" in os.environ:
+            config.summary_max_workers = int(os.environ["SUMMARY_MAX_WORKERS"])
 
         # Vector DB parameters
-        if os.getenv("CHUNK_ID_PREFIX"):
-            config.chunk_id_prefix = os.getenv("CHUNK_ID_PREFIX")
+        if "CHUNK_ID_PREFIX" in os.environ:
+            config.chunk_id_prefix = os.environ["CHUNK_ID_PREFIX"]
 
-        if os.getenv("RECORD_RETENTION_HOURS"):
-            config.record_retention_hours = int(os.getenv("RECORD_RETENTION_HOURS"))
+        if "RECORD_RETENTION_HOURS" in os.environ:
+            config.record_retention_hours = int(os.environ["RECORD_RETENTION_HOURS"])
 
-        if os.getenv("UPSERT_BATCH_SIZE"):
-            config.upsert_batch_size = int(os.getenv("UPSERT_BATCH_SIZE"))
+        if "UPSERT_BATCH_SIZE" in os.environ:
+            config.upsert_batch_size = int(os.environ["UPSERT_BATCH_SIZE"])
 
-        if os.getenv("DELETE_OLD_RECORDS"):
-            config.delete_old_records = os.getenv("DELETE_OLD_RECORDS").lower() in [
+        if "DELETE_OLD_RECORDS" in os.environ:
+            config.delete_old_records = os.environ["DELETE_OLD_RECORDS"].lower() in [
                 "true",
                 "1",
                 "yes",
             ]
 
-        if os.getenv("DRY_RUN"):
-            config.dry_run = os.getenv("DRY_RUN").lower() in ["true", "1", "yes"]
+        if "DRY_RUN" in os.environ:
+            config.dry_run = os.environ["DRY_RUN"].lower() in ["true", "1", "yes"]
 
-        if os.getenv("VERBOSE"):
-            config.verbose = os.getenv("VERBOSE").lower() in ["true", "1", "yes"]
+        if "VERBOSE" in os.environ:
+            config.verbose = os.environ["VERBOSE"].lower() in ["true", "1", "yes"]
 
         # Process lists
-        if os.getenv("EXCLUDED_TAGS"):
+        if "EXCLUDED_TAGS" in os.environ:
             try:
-                config.excluded_tags = json.loads(os.getenv("EXCLUDED_TAGS"))
+                config.excluded_tags = json.loads(os.environ["EXCLUDED_TAGS"])
             except json.JSONDecodeError:
                 # Fallback to comma-separated string
                 config.excluded_tags = [
-                    tag.strip() for tag in os.getenv("EXCLUDED_TAGS").split(",")
+                    tag.strip() for tag in os.environ["EXCLUDED_TAGS"].split(",")
                 ]
 
         # Directory settings
-        if os.getenv("OUTPUT_DIR"):
-            config.output_dir = os.getenv("OUTPUT_DIR")
+        if "OUTPUT_DIR" in os.environ:
+            config.output_dir = os.environ["OUTPUT_DIR"]
 
-        if os.getenv("LOGS_DIR"):
-            config.logs_dir = os.getenv("LOGS_DIR")
+        if "LOGS_DIR" in os.environ:
+            config.logs_dir = os.environ["LOGS_DIR"]
 
         # LLM settings
-        if os.getenv("LLM_PROVIDER"):
-            config.llm_provider = os.getenv("LLM_PROVIDER")
+        if "LLM_PROVIDER" in os.environ:
+            config.llm_provider = os.environ["LLM_PROVIDER"]
 
-        if os.getenv("LLM_INSTRUCTION"):
-            config.llm_instruction = os.getenv("LLM_INSTRUCTION")
+        if "LLM_INSTRUCTION" in os.environ:
+            config.llm_instruction = os.environ["LLM_INSTRUCTION"]
 
         return config
+
+    @classmethod
+    def reload_from_environment(cls) -> "CrawlerConfig":
+        """Force reload environment variables and create a new config."""
+        # Reload environment variables with override=True to force reloading
+        load_dotenv(override=True)
+        return cls.from_environment()
 
     @classmethod
     def from_yaml(cls, yaml_file: str) -> "CrawlerConfig":

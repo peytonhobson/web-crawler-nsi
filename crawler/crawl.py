@@ -1,5 +1,4 @@
 import os
-import asyncio
 from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
 from crawl4ai import (
@@ -43,7 +42,7 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        delay_before_return_html=2,
+        delay_before_return_html=1,
         scan_full_page=True,
         js_code=[get_hidden_elements_removal_js()],
     )
@@ -68,7 +67,7 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        delay_before_return_html=2,
+        delay_before_return_html=1,
         scan_full_page=True,
         js_code=[
             get_hidden_elements_removal_js(),
@@ -105,7 +104,14 @@ async def crawl(config: CrawlerConfig = None):
                 for r in results:
                     internal_links = r.links.get("internal", [])
                     for link in internal_links:
-                        unique_links.add(link["href"])
+                        # Normalize URL before adding to unique_links
+                        normalized_url = normalize_url(link["href"])
+
+                        # Skip image URLs
+                        if not is_image_url(normalized_url):
+                            unique_links.add(normalized_url)
+                        else:
+                            print(f"Skipping image URL: {normalized_url}")
 
         print(f"Found {len(unique_links)} unique links.")
 
@@ -124,7 +130,7 @@ async def crawl(config: CrawlerConfig = None):
 
     # Filter out empty content
     final_results = []
-    for res in processed_pages:
+    for i, res in enumerate(processed_pages):
         try:
             # Skip empty content
             if not res.markdown or res.markdown.isspace():
@@ -133,6 +139,7 @@ async def crawl(config: CrawlerConfig = None):
 
             # Add metadata to the result object
             res.page_path = sanitize_filename(res.url)
+            res.chunk_name = f"{res.page_path}-{i+1}"
 
             final_results.append(res)
 
@@ -244,3 +251,58 @@ def get_universal_structure_fix_js():
         });
     })();
     """
+
+
+def normalize_url(url):
+    """
+    Normalize a URL by removing query parameters and fragments.
+
+    Args:
+        url (str): The URL to normalize
+
+    Returns:
+        str: Normalized URL with only scheme, netloc, and path
+    """
+    parsed = urlparse(url)
+    # Keep only scheme, netloc, and path components
+    normalized = urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path.rstrip("/") or "/",  # Keep slash only for root
+            "",  # Remove params
+            "",  # Remove query
+            "",  # Remove fragment
+        )
+    )
+    return normalized
+
+
+def is_image_url(url):
+    """Check if a URL points to an image file.
+
+    Args:
+        url (str): The URL to check
+
+    Returns:
+        bool: True if the URL is an image, False otherwise
+    """
+    # List of common image file extensions
+    image_extensions = [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".svg",
+        ".bmp",
+        ".tiff",
+        ".ico",
+    ]
+
+    # Parse the URL and extract the path
+    parsed_url = urlparse(url)
+    path = parsed_url.path.lower()
+
+    # Check if the path ends with any of the image extensions
+    return any(path.endswith(ext) for ext in image_extensions)
