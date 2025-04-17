@@ -1,3 +1,4 @@
+import asyncio
 import os
 from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
@@ -20,10 +21,12 @@ load_dotenv()
 
 async def crawl(config: CrawlerConfig = None):
     """
-    Crawl websites based on provided configuration, process content, and return processed results.
+    Crawl websites based on provided configuration, process content,
+    and return processed results.
 
     Args:
-        config (CrawlerConfig, optional): Configuration object. If None, load from environment.
+        config (CrawlerConfig, optional): Configuration object. If None,
+                                         load from environment.
 
     Returns:
         list: Processed content results with duplicates removed.
@@ -86,6 +89,8 @@ async def crawl(config: CrawlerConfig = None):
         ignore_https_errors=True,
     )
 
+    start_urls = config.start_urls
+
     async with AsyncWebCrawler(config=browser_config) as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
@@ -104,22 +109,46 @@ async def crawl(config: CrawlerConfig = None):
                 for r in results:
                     internal_links = r.links.get("internal", [])
                     for link in internal_links:
-                        # Normalize URL before adding to unique_links
-                        normalized_url = normalize_url(link["href"])
-
-                        # Skip image URLs
-                        if not is_image_url(normalized_url):
-                            unique_links.add(normalized_url)
-                        else:
-                            print(f"Skipping image URL: {normalized_url}")
+                        normalized_link = normalize_url(link["href"])
+                        if not is_image_url(normalized_link):
+                            unique_links.add(normalized_link)
 
         print(f"Found {len(unique_links)} unique links.")
 
-        # Convert set to list of URLs
-        url_list = list(unique_links)
+        # Define a helper function to crawl a single URL
+        async def crawl_url(url):
+            try:
+                results = await crawler.arun(url, config=crawler_config)
+                print(f"Completed: {url}")
+                return results
+            except Exception as e:
+                print(f"Error crawling {url}: {e}")
+                return []
 
-        results = await crawler.arun_many(urls=url_list, config=crawler_config)
-        all_results.extend(results)
+        # Process URLs in batches
+        batch_size = config.batch_size
+        url_list = list(unique_links)
+        total_batches = (len(url_list) + batch_size - 1) // batch_size
+
+        print(f"Processing URLs in {total_batches} batches of {batch_size}")
+
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(url_list))
+            batch_urls = url_list[start_idx:end_idx]
+
+            print(
+                f"Processing batch {batch_num + 1}/{total_batches} "
+                f"with {len(batch_urls)} URLs"
+            )
+
+            # Use asyncio.gather to process batch of URLs in parallel
+            tasks = [crawl_url(url) for url in batch_urls]
+            results_list = await asyncio.gather(*tasks)
+
+            all_results.extend(results_list)
+
+            print(f"Completed batch {batch_num + 1}/{total_batches}")
 
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
@@ -130,7 +159,7 @@ async def crawl(config: CrawlerConfig = None):
 
     # Filter out empty content
     final_results = []
-    for i, res in enumerate(processed_pages):
+    for res in processed_pages:
         try:
             # Skip empty content
             if not res.markdown or res.markdown.isspace():
@@ -139,7 +168,6 @@ async def crawl(config: CrawlerConfig = None):
 
             # Add metadata to the result object
             res.page_path = sanitize_filename(res.url)
-            res.chunk_name = f"{res.page_path}-{i+1}"
 
             final_results.append(res)
 
@@ -150,13 +178,6 @@ async def crawl(config: CrawlerConfig = None):
     print(f"✅ Crawling complete! Processed {len(final_results)} unique pages")
 
     return final_results  # Return the processed results
-
-
-def canonicalize_url(url):
-    """Normalize a URL to avoid trivial duplicates (e.g., trailing slashes)."""
-    parsed = urlparse(url)
-    path = parsed.path.rstrip("/")
-    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
 
 
 def get_hidden_elements_removal_js():

@@ -12,6 +12,7 @@ setup(
         "langchain>=0.1.0",
         "openai>=1.0.0",
         "playwright>=1.40.0",
+        "asyncio>=1.0.0",
     ],
     python_requires=">=3.9",
     description=("Web crawler with VectorDB integration for RAG apps"),
