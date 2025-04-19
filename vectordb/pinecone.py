@@ -35,16 +35,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Get configuration from environment variables
-CHUNK_ID_PREFIX = os.getenv("CHUNK_ID_PREFIX", "web_crawl")
-RECORD_RETENTION_HOURS = int(os.getenv("RECORD_RETENTION_HOURS", "1"))
-UPSERT_BATCH_SIZE = int(os.getenv("UPSERT_BATCH_SIZE", "50"))
-DELETE_OLD_RECORDS = os.getenv("DELETE_OLD_RECORDS", "true").lower() in [
-    "true",
-    "1",
-    "yes",
-]
-
 
 class PineconeUploader:
     """
@@ -57,10 +47,10 @@ class PineconeUploader:
         self,
         api_key: str,
         index_name: str,
-        chunk_id_prefix=None,
-        record_retention_hours=None,
-        upsert_batch_size=None,
-        delete_old_records=None,
+        chunk_id_prefix,
+        record_retention_hours,
+        upsert_batch_size,
+        delete_old_records,
     ):
         """
         Initializes the uploader and connects to the correct Pinecone index.
@@ -78,12 +68,10 @@ class PineconeUploader:
         self.web_namespace = ""  # Use default namespace
 
         # Use provided values or fall back to environment defaults
-        self.chunk_id_prefix = chunk_id_prefix or CHUNK_ID_PREFIX
-        self.record_retention_hours = record_retention_hours or RECORD_RETENTION_HOURS
-        self.upsert_batch_size = upsert_batch_size or UPSERT_BATCH_SIZE
-        self.delete_old_records = (
-            delete_old_records if delete_old_records is not None else DELETE_OLD_RECORDS
-        )
+        self.chunk_id_prefix = chunk_id_prefix
+        self.record_retention_hours = record_retention_hours
+        self.upsert_batch_size = upsert_batch_size
+        self.delete_old_records = delete_old_records
 
         # Generate a batch ID using timestamp for tracking current batch
         self.batch_id = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -331,7 +319,7 @@ def upload_chunks(chunks, config=None):
         chunks: List of chunks to upload
         config: Optional configuration object
     """
-    load_dotenv()
+    load_dotenv(override=True)
     # Validate required environment variables.
     required_vars = ["PINECONE_API_KEY", "PINECONE_INDEX_NAME"]
     missing = [var for var in required_vars if not os.getenv(var)]

@@ -7,20 +7,10 @@ evaluates their content, and adds relevant keywords to useful content.
 It doesn't perform any file I/O operations.
 """
 
-import os
 import concurrent.futures
 from typing import List, Tuple
-from dotenv import load_dotenv
 from openai import OpenAI
 from langchain_core.documents import Document
-
-# Load environment variables
-load_dotenv()
-
-# Configurable parameters
-MODEL_NAME = os.getenv("SUMMARY_MODEL_NAME", "gpt-4.1-nano")
-TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.3"))
-MAX_WORKERS = int(os.getenv("SUMMARY_MAX_WORKERS", "10"))
 
 client = OpenAI()
 
@@ -58,15 +48,10 @@ def summarize_content(chunked_documents: List[Document], config=None):
         print("No chunks found!")
         return []
 
-    # Use configuration if provided
-    model_name = MODEL_NAME
-    temperature = TEMPERATURE
-    max_workers = MAX_WORKERS
-
     if config:
-        model_name = getattr(config, "summary_model_name", model_name)
-        temperature = getattr(config, "summary_temperature", temperature)
-        max_workers = getattr(config, "summary_max_workers", max_workers)
+        model_name = getattr(config, "summary_model_name")
+        temperature = getattr(config, "summary_temperature")
+        max_workers = getattr(config, "summary_max_workers")
 
     processed_results = []
 
@@ -86,7 +71,7 @@ def summarize_content(chunked_documents: List[Document], config=None):
     return processed_results
 
 
-def process_chunk(chunk, model_name=MODEL_NAME, temperature=TEMPERATURE):
+def process_chunk(chunk, model_name, temperature):
     """Process an individual chunk.
 
     Args:
@@ -136,8 +121,8 @@ def process_chunk(chunk, model_name=MODEL_NAME, temperature=TEMPERATURE):
 def process_chunk_content(
     content,
     client,
-    model_name=MODEL_NAME,
-    temperature=TEMPERATURE,
+    model_name,
+    temperature,
 ) -> Tuple[bool, str]:
     """Process chunk content and determine if it should be kept.
 

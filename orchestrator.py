@@ -5,7 +5,6 @@ import argparse
 import time
 from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
 from crawler.crawl import crawl
 from chunk_content import chunk_content
 from summary import summarize_content
@@ -48,9 +47,6 @@ async def main(dry_run=False):
     try:
         # Start timing the entire process
         total_start_time = time.time()
-
-        # Load environment variables
-        load_dotenv()
 
         # Create configuration from environment variables
         config = CrawlerConfig.from_environment()

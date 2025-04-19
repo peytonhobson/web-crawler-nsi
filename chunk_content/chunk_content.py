@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-Document Chunking Script
-
-This script takes crawl results, chunks them using spaCy, and returns the chunks.
-"""
-
-from chunk_content.chunk_utils import chunk_documents
+from chunk_content.chunk_utils import semantic_chunk_documents
 from langchain_core.documents import Document
 
 
@@ -47,16 +41,17 @@ def chunk_content(crawl_results, config=None):
     print(f"\nSuccessfully processed {file_count} files")
     print("\n🔪 Chunking documents...")
 
-    # Use config parameters if provided
-    chunk_size = 500
-    overlap_ratio = 0.2
-
     if config:
-        chunk_size = getattr(config, "chunk_size", chunk_size)
-        overlap_ratio = getattr(config, "chunk_overlap_ratio", overlap_ratio)
+        # Configurable buffer size and model
+        buffer_size = getattr(config, "buffer_size", 3) if config else 3
+        embedding_model_name = (
+            getattr(config, "embedding_model_name", None) if config else None
+        )
 
     # Chunk the documents with configuration parameters
-    chunks = chunk_documents(docs, chunk_size=chunk_size, overlap_ratio=overlap_ratio)
+    chunks = semantic_chunk_documents(
+        docs, embedding_model_name=embedding_model_name, buffer_size=buffer_size
+    )
     print(f"Created {len(chunks)} chunks from {len(docs)} documents")
 
     # Return the chunks
