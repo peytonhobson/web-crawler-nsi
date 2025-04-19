@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
 
+load_dotenv(override=True)
+
 
 @dataclass
 class CrawlerConfig:
@@ -16,7 +18,7 @@ class CrawlerConfig:
 
     # Crawling parameters
     start_urls: List[str] = field(default_factory=list)
-    max_depth: int = 3
+    max_depth: int = 0
     batch_size: int = 10
     include_external: bool = False
 
@@ -54,8 +56,8 @@ class CrawlerConfig:
     overlap_rate: float = 0.2
 
     # Chunking parameters
-    chunk_size: int = 500
-    chunk_overlap_ratio: float = 0.2
+    embedding_model_name: str = "text-embedding-3-small"
+    buffer_size: int = 3
 
     # Summarization parameters
     summary_model_name: str = "gpt-4.1-nano"
@@ -94,11 +96,11 @@ class CrawlerConfig:
         if "BATCH_SIZE" in os.environ:
             config.batch_size = int(os.environ["BATCH_SIZE"])
 
-        if "CHUNK_SIZE" in os.environ:
-            config.chunk_size = int(os.environ["CHUNK_SIZE"])
+        if "EMBEDDING_MODEL_NAME" in os.environ:
+            config.embedding_model_name = os.environ["EMBEDDING_MODEL_NAME"]
 
-        if "CHUNK_OVERLAP_RATIO" in os.environ:
-            config.chunk_overlap_ratio = float(os.environ["CHUNK_OVERLAP_RATIO"])
+        if "BUFFER_SIZE" in os.environ:
+            config.buffer_size = int(os.environ["BUFFER_SIZE"])
 
         # Summarization parameters
         if "SUMMARY_MODEL_NAME" in os.environ:
@@ -161,13 +163,6 @@ class CrawlerConfig:
             config.llm_instruction = os.environ["LLM_INSTRUCTION"]
 
         return config
-
-    @classmethod
-    def reload_from_environment(cls) -> "CrawlerConfig":
-        """Force reload environment variables and create a new config."""
-        # Reload environment variables with override=True to force reloading
-        load_dotenv(override=True)
-        return cls.from_environment()
 
     @classmethod
     def from_yaml(cls, yaml_file: str) -> "CrawlerConfig":

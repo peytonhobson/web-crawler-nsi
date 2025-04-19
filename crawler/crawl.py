@@ -1,7 +1,6 @@
 import asyncio
 import os
 from urllib.parse import urlparse, urlunparse
-from dotenv import load_dotenv
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
@@ -14,9 +13,6 @@ from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
 from crawler.clean_markdown import process_markdown_results
 from crawler.config import CrawlerConfig
-
-# Load environment variables from .env file
-load_dotenv()
 
 
 async def crawl(config: CrawlerConfig = None):
@@ -31,10 +27,6 @@ async def crawl(config: CrawlerConfig = None):
     Returns:
         list: Processed content results with duplicates removed.
     """
-    if "OPENAI_API_KEY" not in os.environ:
-        print("⚠️  OPENAI_API_KEY environment variable is not set.")
-        return None
-
     deep_crawl = BFSDeepCrawlStrategy(
         max_depth=config.max_depth, include_external=config.include_external
     )
@@ -66,6 +58,22 @@ async def crawl(config: CrawlerConfig = None):
     crawler_config = CrawlerRunConfig(
         markdown_generator=md_generator,
         excluded_tags=config.excluded_tags,
+        exclude_external_links=True,
+        exclude_social_media_links=True,
+        exclude_external_images=True,
+        verbose=config.verbose,
+        delay_before_return_html=1,
+        scan_full_page=True,
+        js_code=[
+            get_hidden_elements_removal_js(),
+            get_universal_structure_fix_js(),
+        ],
+    )
+
+    # Crawler config for repeated elements to crawl once
+    crawler_config_repeated_elements = CrawlerRunConfig(
+        target_elements=config.excluded_tags,
+        markdown_generator=md_generator,
         exclude_external_links=True,
         exclude_social_media_links=True,
         exclude_external_images=True,
@@ -149,6 +157,13 @@ async def crawl(config: CrawlerConfig = None):
             all_results.extend(results_list)
 
             print(f"Completed batch {batch_num + 1}/{total_batches}")
+
+        for start_url in start_urls:
+            results = await crawler.arun(
+                start_url, config=crawler_config_repeated_elements
+            )
+            results.url = "repeated_elements"
+            all_results.append(results)
 
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
