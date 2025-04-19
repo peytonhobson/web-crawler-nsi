@@ -18,7 +18,7 @@ class CrawlerConfig:
 
     # Crawling parameters
     start_urls: List[str] = field(default_factory=list)
-    max_depth: int = 0
+    max_depth: int = 3
     batch_size: int = 10
     include_external: bool = False
 
