@@ -39,7 +39,10 @@ async def crawl(config: CrawlerConfig = None):
         verbose=config.verbose,
         delay_before_return_html=1,
         scan_full_page=True,
-        js_code=[get_hidden_elements_removal_js()],
+        js_code=[
+            get_hidden_elements_removal_js(),
+            get_dialogue_foundry_removal_js(),
+        ],
     )
 
     openai_config = LLMConfig(
@@ -66,6 +69,7 @@ async def crawl(config: CrawlerConfig = None):
         scan_full_page=True,
         js_code=[
             get_hidden_elements_removal_js(),
+            get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
         ],
     )
@@ -82,6 +86,7 @@ async def crawl(config: CrawlerConfig = None):
         scan_full_page=True,
         js_code=[
             get_hidden_elements_removal_js(),
+            get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
         ],
     )
@@ -285,6 +290,28 @@ def get_universal_structure_fix_js():
                 }
             }
         });
+    })();
+    """
+
+
+def get_dialogue_foundry_removal_js():
+    """Return JavaScript code that removes Dialogue Foundry app elements from the DOM.
+
+    This script removes elements with ID 'dialogue-foundry-app' which can
+    interfere with content extraction.
+    """
+    return """
+    (async () => {
+        // Find and remove elements with ID 'dialogue-foundry-app'
+        const dialogueElements = document.querySelectorAll('#dialogue-foundry-app');
+        
+        if (dialogueElements.length > 0) {
+            console.log(`Found ${dialogueElements.length} dialogue-foundry elements`);
+            
+            dialogueElements.forEach(el => {
+                el.remove();
+            });
+        }
     })();
     """
 
