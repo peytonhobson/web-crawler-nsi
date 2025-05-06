@@ -26,6 +26,7 @@ class CrawlerConfig:
     excluded_tags: List[str] = field(
         default_factory=lambda: ["footer", "nav", "header"]
     )
+    exclude_hidden_elements: bool = True
 
     # LLM settings
     llm_provider: str = "openai/gpt-4.1-nano"

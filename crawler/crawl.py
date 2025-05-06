@@ -40,7 +40,7 @@ async def crawl(config: CrawlerConfig = None):
         delay_before_return_html=1,
         scan_full_page=True,
         js_code=[
-            get_hidden_elements_removal_js(),
+            config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
         ],
     )
@@ -68,7 +68,7 @@ async def crawl(config: CrawlerConfig = None):
         delay_before_return_html=1,
         scan_full_page=True,
         js_code=[
-            get_hidden_elements_removal_js(),
+            config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
         ],
@@ -85,7 +85,7 @@ async def crawl(config: CrawlerConfig = None):
         delay_before_return_html=1,
         scan_full_page=True,
         js_code=[
-            get_hidden_elements_removal_js(),
+            config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
         ],
