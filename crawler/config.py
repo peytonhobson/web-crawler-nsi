@@ -92,7 +92,11 @@ class CrawlerConfig:
 
         # Process numeric values
         if "MAX_DEPTH" in os.environ:
-            config.max_depth = int(os.environ["MAX_DEPTH"])
+            config.max_depth = (
+                None
+                if os.environ["MAX_DEPTH"] == "None"
+                else int(os.environ["MAX_DEPTH"])
+            )
 
         if "BATCH_SIZE" in os.environ:
             config.batch_size = int(os.environ["BATCH_SIZE"])
