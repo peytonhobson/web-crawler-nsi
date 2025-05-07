@@ -119,7 +119,9 @@ async def crawl(config: CrawlerConfig = None):
                     internal_links = r.links.get("internal", [])
                     for link in internal_links:
                         normalized_link = normalize_url(link["href"])
-                        if not is_image_url(normalized_link):
+                        if not is_image_url(normalized_link) and is_valid_web_url(
+                            normalized_link
+                        ):
                             unique_links.add(normalized_link)
 
         print(f"Found {len(unique_links)} unique links.")
@@ -365,3 +367,23 @@ def is_image_url(url):
 
     # Check if the path ends with any of the image extensions
     return any(path.endswith(ext) for ext in image_extensions)
+
+
+def is_valid_web_url(url):
+    """Check if a URL is a valid web link with HTTPS.
+
+    Args:
+        url (str): The URL to check
+
+    Returns:
+        bool: True if the URL is a valid HTTPS web link, False otherwise
+    """
+    try:
+        parsed_url = urlparse(url)
+        return (
+            parsed_url.scheme in ("http", "https")
+            and parsed_url.netloc  # Ensures there's a domain
+            and "." in parsed_url.netloc  # Basic domain validation
+        )
+    except Exception:
+        return False
