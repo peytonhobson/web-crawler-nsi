@@ -17,7 +17,7 @@ services:
       export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/playwright
       python -m playwright install chromium
     startCommand: python orchestrator.py
-    schedule: "0 9 */2 * *"  # Run at 9 AM UTC every 2 days
+    schedule: "0 9 * * *"  # Run at 9 AM UTC every 2 days
     envVars:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "/opt/render/project/playwright"
