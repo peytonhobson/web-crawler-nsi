@@ -163,6 +163,11 @@ class CrawlerConfig:
         if "LLM_INSTRUCTION" in os.environ:
             config.llm_instruction = os.environ["LLM_INSTRUCTION"]
 
+        if "EXCLUDE_HIDDEN_ELEMENTS" in os.environ:
+            config.exclude_hidden_elements = os.environ[
+                "EXCLUDE_HIDDEN_ELEMENTS"
+            ].lower() in ["true", "1", "yes"]
+
         return config
 
     @classmethod
