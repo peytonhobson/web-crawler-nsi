@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from urllib.parse import urlparse, urlunparse
 from crawl4ai import (
     AsyncWebCrawler,
@@ -27,6 +28,14 @@ async def crawl(config: CrawlerConfig = None):
     Returns:
         list: Processed content results with duplicates removed.
     """
+    # Safety check for max_depth
+    if config.max_depth > 3:
+        print(
+            f"Warning: max_depth of {config.max_depth} is quite high and may cause recursion issues."
+        )
+        print("Consider reducing max_depth to 2-3 for better stability.")
+        sys.setrecursionlimit(10000)
+
     deep_crawl = BFSDeepCrawlStrategy(
         max_depth=config.max_depth, include_external=config.include_external
     )
@@ -119,7 +128,7 @@ async def crawl(config: CrawlerConfig = None):
                     internal_links = r.links.get("internal", [])
                     for link in internal_links:
                         normalized_link = normalize_url(link["href"])
-                        if not is_image_url(normalized_link) and is_valid_web_url(
+                        if not is_file_url(normalized_link) and is_valid_web_url(
                             normalized_link
                         ):
                             unique_links.add(normalized_link)
@@ -339,34 +348,22 @@ def normalize_url(url):
     return normalized
 
 
-def is_image_url(url):
-    """Check if a URL points to an image file.
+def is_file_url(url):
+    """Check if a URL points to a file (has a file extension).
 
     Args:
         url (str): The URL to check
 
     Returns:
-        bool: True if the URL is an image, False otherwise
+        bool: True if the URL points to a file, False otherwise
     """
-    # List of common image file extensions
-    image_extensions = [
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".gif",
-        ".webp",
-        ".svg",
-        ".bmp",
-        ".tiff",
-        ".ico",
-    ]
-
     # Parse the URL and extract the path
     parsed_url = urlparse(url)
     path = parsed_url.path.lower()
 
-    # Check if the path ends with any of the image extensions
-    return any(path.endswith(ext) for ext in image_extensions)
+    # Check if the path contains a dot followed by letters/numbers
+    # This indicates a file extension
+    return "." in path and any(c.isalnum() for c in path.split(".")[-1])
 
 
 def is_valid_web_url(url):
