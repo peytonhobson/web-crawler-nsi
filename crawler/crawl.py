@@ -39,10 +39,6 @@ async def crawl(config: CrawlerConfig = None):
         verbose=config.verbose,
         delay_before_return_html=1,
         scan_full_page=True,
-        js_code=[
-            config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
-            get_dialogue_foundry_removal_js(),
-        ],
     )
 
     openai_config = LLMConfig(
