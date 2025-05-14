@@ -92,6 +92,9 @@ async def main(dry_run=False):
             f"in {format_time(summary_time)}"
         )
 
+        # Get Pinecone index name from environment
+        pinecone_index = os.environ.get("PINECONE_INDEX_NAME", "unknown")
+
         if config.dry_run:
             # Save the summarized results instead of uploading to Pinecone
             logger.info(f"Saving results to {config.output_dir} folder")
@@ -126,6 +129,7 @@ async def main(dry_run=False):
                         f"chunks, which is below the minimum threshold of "
                         f"{min_threshold:.0f} chunks ({threshold_pct:.0f}% of "
                         f"expected {config.expected_chunks}).\n\n"
+                        f"Pinecone index: {pinecone_index}\n\n"
                         f"Pinecone upload has been skipped. Please review the "
                         f"crawler configuration and data sources."
                     )
@@ -141,6 +145,7 @@ async def main(dry_run=False):
                         f"The web crawler processed {results_count} chunks, "
                         f"which exceeds the expected count of "
                         f"{config.expected_chunks}.\n\n"
+                        f"Pinecone index: {pinecone_index}\n\n"
                         f"Pinecone upload will proceed normally, but you may "
                         f"want to review your crawler configuration to ensure "
                         f"it's working as intended."
@@ -183,11 +188,15 @@ async def main(dry_run=False):
         total_time = time.time() - total_start_time
         logger.error(f"Orchestration failed after {format_time(total_time)}: {str(e)}")
 
+        # Get Pinecone index name for error notification
+        pinecone_index = os.environ.get("PINECONE_INDEX_NAME", "unknown")
+
         # Send email notification about the failure
         try:
             error_message = (
                 f"The web crawler orchestration process failed after "
                 f"{format_time(total_time)}.\n\n"
+                f"Pinecone index: {pinecone_index}\n\n"
                 f"Error: {str(e)}"
             )
             send_email_notification("Web Crawler Error: Process Failed", error_message)

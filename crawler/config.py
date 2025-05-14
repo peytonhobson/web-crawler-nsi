@@ -30,7 +30,7 @@ class CrawlerConfig:
 
     # Validation parameters
     expected_chunks: int = 0  # 0 means no validation
-    chunk_threshold_pct: float = 10.0  # Default 10% threshold
+    chunk_threshold_pct: float = 20.0  # Default 20% threshold
 
     # LLM settings
     llm_provider: str = "openai/gpt-4.1-nano"
