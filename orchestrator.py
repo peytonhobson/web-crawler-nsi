@@ -3,8 +3,11 @@ import logging
 import asyncio
 import argparse
 import time
+import os
 from pathlib import Path
 from datetime import datetime
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, Content
 from crawler.crawl import crawl
 from chunk_content import chunk_content
 from summary import summarize_content
@@ -97,11 +100,63 @@ async def main(dry_run=False):
             save_time = time.time() - save_start_time
             logger.info(f"Results saved to folder in {format_time(save_time)}")
         else:
-            # Run Pinecone upload with configuration
-            upload_start_time = time.time()
-            upload_chunks(summarized_results, config)
-            upload_time = time.time() - upload_start_time
-            logger.info(f"Upload to Pinecone completed in {format_time(upload_time)}")
+            # Check if the number of chunks to upload meets the expected threshold
+            should_upload = True
+            upload_time = 0
+
+            # Validate chunk count if expected_chunks is configured
+            if config.expected_chunks > 0:
+                min_threshold = (
+                    config.expected_chunks * (100 - config.chunk_threshold_pct) / 100
+                )
+
+                if results_count < min_threshold:
+                    threshold_pct = 100 - config.chunk_threshold_pct
+                    logger.warning(
+                        f"Number of chunks ({results_count}) is below the "
+                        f"minimum threshold ({min_threshold:.0f}, "
+                        f"{threshold_pct:.0f}% of expected "
+                        f"{config.expected_chunks})"
+                    )
+                    should_upload = False
+                    threshold_pct = 100 - config.chunk_threshold_pct
+                    email_subject = "Web Crawler Warning: Below Expected Chunks"
+                    email_message = (
+                        f"The web crawler processed only {results_count} "
+                        f"chunks, which is below the minimum threshold of "
+                        f"{min_threshold:.0f} chunks ({threshold_pct:.0f}% of "
+                        f"expected {config.expected_chunks}).\n\n"
+                        f"Pinecone upload has been skipped. Please review the "
+                        f"crawler configuration and data sources."
+                    )
+                    send_email_notification(email_subject, email_message)
+                elif results_count > config.expected_chunks:
+                    logger.info(
+                        f"Number of chunks ({results_count}) exceeds expected "
+                        f"count ({config.expected_chunks})"
+                    )
+                    # Still upload but send notification
+                    email_subject = "Web Crawler Notice: Above Expected Chunks"
+                    email_message = (
+                        f"The web crawler processed {results_count} chunks, "
+                        f"which exceeds the expected count of "
+                        f"{config.expected_chunks}.\n\n"
+                        f"Pinecone upload will proceed normally, but you may "
+                        f"want to review your crawler configuration to ensure "
+                        f"it's working as intended."
+                    )
+                    send_email_notification(email_subject, email_message)
+
+            # Run Pinecone upload with configuration if validation passed
+            if should_upload:
+                upload_start_time = time.time()
+                upload_chunks(summarized_results, config)
+                upload_time = time.time() - upload_start_time
+                logger.info(
+                    f"Upload to Pinecone completed in {format_time(upload_time)}"
+                )
+            else:
+                logger.warning("Pinecone upload skipped due to validation failure")
 
         # Calculate and log the total execution time
         total_time = time.time() - total_start_time
@@ -116,8 +171,10 @@ async def main(dry_run=False):
         logger.info(f"Summarization: {format_time(summary_time)}")
         if config.dry_run:
             logger.info(f"Saving:        {format_time(save_time)}")
-        else:
+        elif should_upload:
             logger.info(f"Upload:        {format_time(upload_time)}")
+        else:
+            logger.info("Upload:        Skipped")
         logger.info(f"Total time:    {format_time(total_time)}")
         logger.info("=============================")
 
@@ -125,6 +182,18 @@ async def main(dry_run=False):
         # Calculate execution time even if there's an error
         total_time = time.time() - total_start_time
         logger.error(f"Orchestration failed after {format_time(total_time)}: {str(e)}")
+
+        # Send email notification about the failure
+        try:
+            error_message = (
+                f"The web crawler orchestration process failed after "
+                f"{format_time(total_time)}.\n\n"
+                f"Error: {str(e)}"
+            )
+            send_email_notification("Web Crawler Error: Process Failed", error_message)
+        except Exception as email_error:
+            logger.error(f"Failed to send error notification email: {email_error}")
+
         sys.exit(1)
 
 
@@ -176,6 +245,42 @@ def save_results_to_folder(results, output_dir="cleaned_output"):
     except Exception as e:
         logger.error(f"Error saving chunks to folder: {str(e)}")
         raise
+
+
+def send_email_notification(subject, message):
+    """Send email notification using SendGrid API.
+
+    Args:
+        subject (str): Email subject
+        message (str): Email message body
+    """
+    try:
+        # Check if SendGrid API key is configured
+        api_key = os.environ.get("SENDGRID_API_KEY")
+        if not api_key:
+            logger.error("SendGrid API key not found in environment variables")
+            return
+
+        # Get email sender and recipient from environment
+        from_email = os.environ.get("NOTIFICATION_EMAIL_FROM", "no-reply@untap-ai.com")
+        to_email = os.environ.get("NOTIFICATION_EMAIL_TO", "no-reply@untap-ai.com")
+
+        # Create email message
+        email = Mail(
+            from_email=Email(from_email),
+            to_emails=to_email,
+            subject=subject,
+            plain_text_content=Content("text/plain", message),
+        )
+
+        # Send email
+        sg = SendGridAPIClient(api_key=api_key)
+        response = sg.send(email)
+
+        logger.info(f"Email sent with status: {response.status_code}")
+
+    except Exception as e:
+        logger.error(f"Failed to send email: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ setup(
         "asyncio>=1.0.0",
         "langchain-experimental>=0.3.0",
         "langchain-openai>=0.3.0",
+        "sendgrid>=6.10.0",
     ],
     python_requires=">=3.9",
     description=("Web crawler with VectorDB integration for RAG apps"),

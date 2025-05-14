@@ -28,6 +28,10 @@ class CrawlerConfig:
     )
     exclude_hidden_elements: bool = True
 
+    # Validation parameters
+    expected_chunks: int = 0  # 0 means no validation
+    chunk_threshold_pct: float = 10.0  # Default 10% threshold
+
     # LLM settings
     llm_provider: str = "openai/gpt-4.1-nano"
     llm_instruction: str = """
@@ -96,6 +100,13 @@ class CrawlerConfig:
 
         if "BATCH_SIZE" in os.environ:
             config.batch_size = int(os.environ["BATCH_SIZE"])
+
+        # Validation parameters
+        if "EXPECTED_CHUNKS" in os.environ:
+            config.expected_chunks = int(os.environ["EXPECTED_CHUNKS"])
+
+        if "CHUNK_THRESHOLD_PCT" in os.environ:
+            config.chunk_threshold_pct = float(os.environ["CHUNK_THRESHOLD_PCT"])
 
         if "EMBEDDING_MODEL_NAME" in os.environ:
             config.embedding_model_name = os.environ["EMBEDDING_MODEL_NAME"]
