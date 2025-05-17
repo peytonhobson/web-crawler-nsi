@@ -272,7 +272,7 @@ def send_email_notification(subject, message):
 
         # Get email sender and recipient from environment
         from_email = os.environ.get("NOTIFICATION_EMAIL_FROM", "no-reply@untap-ai.com")
-        to_email = os.environ.get("NOTIFICATION_EMAIL_TO", "no-reply@untap-ai.com")
+        to_email = os.environ.get("NOTIFICATION_EMAIL_TO", "contact@untap-ai.com")
 
         # Create email message
         email = Mail(
