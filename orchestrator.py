@@ -134,7 +134,9 @@ async def main(dry_run=False):
                         f"crawler configuration and data sources."
                     )
                     send_email_notification(email_subject, email_message)
-                elif results_count > config.expected_chunks:
+                elif results_count > config.expected_chunks * (
+                    1 + config.chunk_threshold_pct / 100
+                ):
                     logger.info(
                         f"Number of chunks ({results_count}) exceeds expected "
                         f"count ({config.expected_chunks})"
