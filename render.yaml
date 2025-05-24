@@ -4,7 +4,7 @@ services:
   - type: cron
     name: web-crawler
     plan: standard
-    env: node # Using Node instead of Docker
+    env: python
     buildCommand: |
       # Install dependencies
       pip install -r requirements.txt
