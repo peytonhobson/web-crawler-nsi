@@ -214,51 +214,35 @@ class PineconeUploader:
             )
             logger.info(f"Threshold time: {retention_threshold.isoformat()}")
 
-            # Get all vectors with the CHUNK_ID_PREFIX
-            all_old_vectors = []
-            logger.info(f"Listing all vectors with prefix '{self.chunk_id_prefix}'...")
+            total_deleted = 0
+            logger.info(
+                f"Listing all vectors with prefix '{self.chunk_id_prefix}' in batches..."
+            )
 
-            # Get all vector IDs with CHUNK_ID_PREFIX first
-            all_matching_ids = []
+            # Process each batch of IDs from the index.list generator
             for batch in self.index.list(
                 prefix=self.chunk_id_prefix, namespace=self.web_namespace
             ):
-                if batch:
-                    all_matching_ids.extend(batch)
-                    logger.info(f"Found batch of {len(batch)} vectors with prefix")
-                    # Small pause between batch processing
-                    time.sleep(0.1)
+                if not batch:
+                    continue
+                logger.info(f"Processing batch of {len(batch)} vectors " f"with prefix")
+                # Fetch this batch
+                try:
+                    response = self.index.fetch(ids=batch, namespace=self.web_namespace)
+                    vectors_dict = response.vectors
+                except Exception as e:
+                    logger.error(f"Error fetching batch: {e}")
+                    continue
 
-            if not all_matching_ids:
-                logger.info(f"No vectors with prefix '{self.chunk_id_prefix}' found")
-                return 0
-
-            logger.info(f"Total {len(all_matching_ids)} vectors with matching prefix")
-
-            # Fetch all vectors at once to check timestamps
-            try:
-                logger.info(
-                    f"Fetching all {len(all_matching_ids)} vectors to check timestamps"
-                )
-                # Fetch vectors using the Pinecone v6 format
-                response = self.index.fetch(
-                    ids=all_matching_ids, namespace=self.web_namespace
-                )
-
-                # Access the vectors attribute from the response object
-                # In Pinecone v6, response is an object with a 'vectors' attribute
-                vectors_dict = response.vectors
-
-                # Process all vectors
+                # Find old vectors in this batch
+                old_vector_ids = []
                 for vector_id, vector_data in vectors_dict.items():
-                    upload_timestamp = vector_data.metadata["upload_timestamp"]
-
+                    upload_timestamp = vector_data.metadata.get("upload_timestamp")
                     if upload_timestamp:
-                        # Parse timestamp and compare
                         try:
                             record_timestamp = datetime.fromisoformat(upload_timestamp)
                             if record_timestamp < retention_threshold:
-                                all_old_vectors.append(vector_id)
+                                old_vector_ids.append(vector_id)
                                 logger.debug(
                                     f"Vector {vector_id} is older than "
                                     f"{self.record_retention_hours} hours "
@@ -274,37 +258,26 @@ class PineconeUploader:
                             f"Vector {vector_id} has no upload_timestamp metadata"
                         )
 
-            except Exception as e:
-                logger.error(f"Error fetching vectors: {e}")
-                import traceback
-
-                traceback.print_exc()
-                return 0
-
-            # Check if we found any old vectors
-            if not all_old_vectors:
-                logger.info(
-                    f"No vectors older than {self.record_retention_hours} hours found"
-                )
-                return 0
+                # Delete old vectors in this batch
+                if old_vector_ids:
+                    try:
+                        logger.info(
+                            f"Deleting {len(old_vector_ids)} old vectors in this batch"
+                        )
+                        self.index.delete(
+                            ids=old_vector_ids, namespace=self.web_namespace
+                        )
+                        total_deleted += len(old_vector_ids)
+                    except Exception as e:
+                        logger.error(f"Error deleting vectors in batch: {e}")
+                # Small pause between batch processing
+                time.sleep(0.1)
 
             logger.info(
-                f"Found {len(all_old_vectors)} vectors older than {self.record_retention_hours} hours"
+                f"Successfully deleted {total_deleted} vectors older than "
+                f"{self.record_retention_hours} hours"
             )
-
-            # Delete all old vectors at once
-            try:
-                logger.info(f"Deleting all {len(all_old_vectors)} old vectors at once")
-                self.index.delete(ids=all_old_vectors, namespace=self.web_namespace)
-                total_deleted = len(all_old_vectors)
-                logger.info(
-                    f"Successfully deleted {total_deleted} vectors older than "
-                    f"{self.record_retention_hours} hours"
-                )
-                return total_deleted
-            except Exception as e:
-                logger.error(f"Error deleting vectors: {e}")
-                return 0
+            return total_deleted
 
         except Exception as e:
             logger.error(f"Error during deletion of old records: {e}")
