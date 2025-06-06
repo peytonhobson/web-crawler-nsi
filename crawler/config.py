@@ -27,6 +27,7 @@ class CrawlerConfig:
         default_factory=lambda: ["footer", "nav", "header"]
     )
     exclude_hidden_elements: bool = True
+    delay_before_return_html: int = 1
 
     # Validation parameters
     expected_chunks: int = 0  # 0 means no validation
@@ -107,6 +108,11 @@ class CrawlerConfig:
 
         if "CHUNK_THRESHOLD_PCT" in os.environ:
             config.chunk_threshold_pct = float(os.environ["CHUNK_THRESHOLD_PCT"])
+
+        if "DELAY_BEFORE_RETURN_HTML" in os.environ:
+            config.delay_before_return_html = int(
+                os.environ["DELAY_BEFORE_RETURN_HTML"]
+            )
 
         if "EMBEDDING_MODEL_NAME" in os.environ:
             config.embedding_model_name = os.environ["EMBEDDING_MODEL_NAME"]
