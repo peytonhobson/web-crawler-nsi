@@ -41,14 +41,14 @@ class CustomMarkdownGenerator:
             if title and title.get_text().strip():
                 title_text = title.get_text().strip()
                 content_parts.append(f"# {title_text}")
-                seen_content.add(title_text.lower())
+                seen_content.add(self._normalize_text(title_text))
 
             # Extract meta description
             meta_desc = soup.find("meta", attrs={"name": "description"})
             if meta_desc and meta_desc.get("content"):
                 desc_text = meta_desc.get("content").strip()
                 content_parts.append(f"*{desc_text}*")
-                seen_content.add(desc_text.lower())
+                seen_content.add(self._normalize_text(desc_text))
 
             # Extract main content
             main_content = self._extract_main_content(soup, seen_content)
@@ -62,10 +62,59 @@ class CustomMarkdownGenerator:
             markdown = re.sub(r"\n{3,}", "\n\n", markdown)
             markdown = markdown.strip()
 
+            # Final deduplication pass on the complete markdown
+            markdown = self._remove_duplicate_paragraphs(markdown)
+
             return markdown if markdown else "No content extracted"
 
         except Exception as e:
             return f"Error generating markdown: {str(e)}"
+
+    def _normalize_text(self, text: str) -> str:
+        """Normalize text for comparison by removing extra whitespace and
+        converting to lowercase."""
+        # Remove extra whitespace and normalize
+        normalized = re.sub(r"\s+", " ", text.strip().lower())
+        return normalized
+
+    def _remove_duplicate_paragraphs(self, markdown: str) -> str:
+        """Remove duplicate paragraphs from the final markdown."""
+        if not markdown:
+            return markdown
+
+        # Split into paragraphs (double newline separated)
+        paragraphs = markdown.split("\n\n")
+        seen_paragraphs = set()
+        unique_paragraphs = []
+
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                continue
+
+            # Normalize for comparison
+            normalized = self._normalize_text(paragraph)
+
+            # Skip if we've seen this paragraph before
+            if normalized in seen_paragraphs:
+                continue
+
+            # Check for substantial similarity with existing paragraphs
+            is_duplicate = False
+            for seen in seen_paragraphs:
+                if len(normalized) > 20 and len(seen) > 20:
+                    if (
+                        normalized in seen
+                        or seen in normalized
+                        or self._calculate_similarity(normalized, seen) > 0.85
+                    ):
+                        is_duplicate = True
+                        break
+
+            if not is_duplicate:
+                unique_paragraphs.append(paragraph)
+                seen_paragraphs.add(normalized)
+
+        return "\n\n".join(unique_paragraphs)
 
     def _extract_main_content(
         self, soup: BeautifulSoup, seen_content: Set[str]
@@ -122,16 +171,16 @@ class CustomMarkdownGenerator:
         if not text or len(text) < 3:
             return None
 
-        # Check for duplicate content (case-insensitive)
-        text_lower = text.lower()
-        if text_lower in seen_content:
+        # Normalize text for comparison
+        normalized_text = self._normalize_text(text)
+
+        # Check for exact duplicate content
+        if normalized_text in seen_content:
             return None
 
-        # For longer text, check if it's substantially similar to existing
-        if len(text) > 50:
-            for seen in seen_content:
-                if len(seen) > 50 and self._is_similar_content(text_lower, seen):
-                    return None
+        # Check for similar content using multiple methods
+        if self._is_duplicate_content(normalized_text, seen_content):
+            return None
 
         # Skip elements that are likely navigation or footer
         classes = element.get("class", [])
@@ -168,26 +217,40 @@ class CustomMarkdownGenerator:
 
         # Add to seen content if we're returning it
         if result:
-            seen_content.add(text_lower)
+            seen_content.add(normalized_text)
 
         return result
 
-    def _is_similar_content(self, text1: str, text2: str) -> bool:
-        """Check if two pieces of content are substantially similar."""
-        # Simple similarity check - if one contains most of the other
-        shorter, longer = (text1, text2) if len(text1) < len(text2) else (text2, text1)
+    def _is_duplicate_content(
+        self, normalized_text: str, seen_content: Set[str]
+    ) -> bool:
+        """Check if content is a duplicate using multiple methods."""
+        # Method 1: Check if this text is contained in any seen content
+        for seen in seen_content:
+            if len(normalized_text) > 20 and len(seen) > 20:
+                # Check if one is contained in the other
+                if normalized_text in seen or seen in normalized_text:
+                    return True
 
-        # If the shorter text is more than 80% contained in the longer one
-        if len(shorter) > 20:  # Only check for substantial content
-            words_shorter = set(shorter.split())
-            words_longer = set(longer.split())
-
-            if len(words_shorter) > 0:
-                overlap = len(words_shorter.intersection(words_longer))
-                similarity = overlap / len(words_shorter)
-                return similarity > 0.8
+                # Check word-based similarity
+                if self._calculate_similarity(normalized_text, seen) > 0.8:
+                    return True
 
         return False
+
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """Calculate similarity between two texts based on word overlap."""
+        words1 = set(text1.split())
+        words2 = set(text2.split())
+
+        if not words1 or not words2:
+            return 0.0
+
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+
+        # Jaccard similarity
+        return len(intersection) / len(union) if union else 0.0
 
     def _process_list(self, list_element) -> str:
         """Process ul/ol elements into markdown lists."""
