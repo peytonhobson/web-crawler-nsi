@@ -1,22 +1,31 @@
-from langchain_experimental.text_splitter import SemanticChunker
-from langchain_openai import (
-    OpenAIEmbeddings,
-)  # or use HuggingFaceEmbeddings for lower cost
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 
-def semantic_chunk_documents(
-    docs, embedding_model_name="text-embedding-3-small", buffer_size=3, **kwargs
-):
-    # Choose embedding model: OpenAI (high performance, higher cost) or
-    # HuggingFace (lower cost)
-    embedding_model = OpenAIEmbeddings(model=embedding_model_name)
+def character_chunk_documents(docs, chunk_size=2000, chunk_overlap=200, **kwargs):
+    """
+    Chunk documents using character-based splitting optimized for LLM
+    processing.
 
-    chunker = SemanticChunker(
-        embeddings=embedding_model,
-        buffer_size=buffer_size,  # Number of sentences per group
-        breakpoint_threshold_type="percentile",
-        breakpoint_threshold_amount=90,  # Optional: tune for more/less chunks
+    Args:
+        docs: List of Document objects to chunk
+        chunk_size: Maximum characters per chunk (default 2000 for good
+                   LLM context)
+        chunk_overlap: Character overlap between chunks (default 200 for
+                      continuity)
+        **kwargs: Additional parameters for the text splitter
+
+    Returns:
+        List of chunked Document objects
+    """
+    # Create character-based text splitter
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        is_separator_regex=False,
+        # Try to split on paragraphs first
+        separators=["\n\n", "\n", " ", ""],
         **kwargs,
     )
 
@@ -32,8 +41,8 @@ def semantic_chunk_documents(
         )
         cleaned_docs.append(cleaned_doc)
 
-    # docs: list of langchain_core.documents.Document
-    chunked_docs = chunker.split_documents(cleaned_docs)
+    # Split documents into chunks
+    chunked_docs = text_splitter.split_documents(cleaned_docs)
 
     all_docs = []
     page_count_map = {}
@@ -52,10 +61,11 @@ def semantic_chunk_documents(
                 "url": doc.metadata.get("url", "unknown"),
                 "page_path": page_path,
                 "chunk_name": f"{page_path}-{page_count}",
+                "chunk_size": len(doc.page_content),
             }
         )
 
-        # Create Document with original chunk text
+        # Create Document with chunk text
         chunk_doc = Document(page_content=doc.page_content, metadata=metadata)
         all_docs.append(chunk_doc)
 

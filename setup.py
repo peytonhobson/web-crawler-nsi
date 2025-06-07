@@ -9,7 +9,7 @@ setup(
         "python-dotenv~=1.0.0",
         "pinecone~=6.0.0",
         "langchain~=0.3.0",
-        "openai~=1.0.0",
+        "openai>=1.68.2,<2.0.0",
         "playwright~=1.49.0",
         "asyncio~=3.4.0",
         "langchain-experimental~=0.3.0",

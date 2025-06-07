@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from chunk_content.chunk_utils import semantic_chunk_documents
+from chunk_content.chunk_utils import character_chunk_documents
 from langchain_core.documents import Document
 
 
@@ -42,15 +42,16 @@ def chunk_content(crawl_results, config=None):
     print("\n🔪 Chunking documents...")
 
     if config:
-        # Configurable buffer size and model
-        buffer_size = getattr(config, "buffer_size", 3) if config else 3
-        embedding_model_name = (
-            getattr(config, "embedding_model_name", None) if config else None
-        )
+        # Configurable chunk size and overlap
+        chunk_size = getattr(config, "chunk_size", 2000) if config else 2000
+        chunk_overlap = getattr(config, "chunk_overlap", 200) if config else 200
+    else:
+        chunk_size = 2000
+        chunk_overlap = 200
 
     # Chunk the documents with configuration parameters
-    chunks = semantic_chunk_documents(
-        docs, embedding_model_name=embedding_model_name, buffer_size=buffer_size
+    chunks = character_chunk_documents(
+        docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
     print(f"Created {len(chunks)} chunks from {len(docs)} documents")
 
