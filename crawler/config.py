@@ -83,8 +83,8 @@ class CrawlerConfig:
     # Browser configuration
     browser_type: str = "chromium"
     headless: bool = True
-    light_mode: bool = False
-    text_mode: bool = False
+    light_mode: bool = True
+    text_mode: bool = True
     ignore_https_errors: bool = True
 
     # Output directories

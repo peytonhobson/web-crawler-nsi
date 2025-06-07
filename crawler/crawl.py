@@ -48,6 +48,8 @@ async def crawl(config: CrawlerConfig = None):
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
         scan_full_page=True,
+        # Use a simpler markdown generator for link extraction
+        markdown_generator=None,  # Use default simple markdown
     )
 
     openai_config = LLMConfig(
@@ -130,6 +132,20 @@ async def crawl(config: CrawlerConfig = None):
 
                     internal_links = r.links.get("internal", [])
                     print(f"Found {len(internal_links)} internal links")
+
+                    # If no links found via markdown, try extracting from HTML directly
+                    if len(internal_links) == 0 and len(r.html) > 0:
+                        print(
+                            "Debug: No links found in markdown, extracting from HTML..."
+                        )
+                        html_links = extract_links_from_html(r.html, start_url)
+                        print(f"Debug: Found {len(html_links)} links in HTML")
+
+                        # Convert HTML links to the expected format
+                        internal_links = [{"href": link} for link in html_links]
+                        print(
+                            f"Debug: Converted to {len(internal_links)} internal links"
+                        )
 
                     # Debug: Print first few internal links if any
                     if internal_links:
@@ -409,3 +425,40 @@ def is_valid_web_url(url):
         )
     except Exception:
         return False
+
+
+def extract_links_from_html(html, base_url):
+    """Extract internal links directly from HTML when markdown conversion fails.
+
+    Args:
+        html (str): The HTML content to extract links from
+        base_url (str): The base URL to determine internal vs external links
+
+    Returns:
+        list: List of internal link URLs
+    """
+    import re
+    from urllib.parse import urljoin, urlparse
+
+    # Extract all href attributes from anchor tags
+    href_pattern = r'<a[^>]*href=["\']([^"\']*)["\'][^>]*>'
+    all_links = re.findall(href_pattern, html)
+
+    # Parse base URL to get domain
+    base_domain = urlparse(base_url).netloc.lower()
+
+    internal_links = []
+    for link in all_links:
+        # Skip empty links, fragments, and javascript
+        if not link or link.startswith("#") or link.startswith("javascript:"):
+            continue
+
+        # Convert relative URLs to absolute
+        absolute_url = urljoin(base_url, link)
+        parsed_link = urlparse(absolute_url)
+
+        # Check if it's an internal link (same domain)
+        if parsed_link.netloc.lower() == base_domain:
+            internal_links.append(absolute_url)
+
+    return internal_links
