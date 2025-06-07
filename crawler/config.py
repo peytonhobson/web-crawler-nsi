@@ -80,6 +80,13 @@ class CrawlerConfig:
     dry_run: bool = False
     verbose: bool = False
 
+    # Browser configuration
+    browser_type: str = "chromium"
+    headless: bool = True
+    light_mode: bool = False
+    text_mode: bool = False
+    ignore_https_errors: bool = True
+
     # Output directories
     output_dir: str = "cleaned_output"
     logs_dir: str = "logs"
@@ -184,6 +191,26 @@ class CrawlerConfig:
             config.exclude_hidden_elements = os.environ[
                 "EXCLUDE_HIDDEN_ELEMENTS"
             ].lower() in ["true", "1", "yes"]
+
+        # Browser configuration
+        if "BROWSER_TYPE" in os.environ:
+            config.browser_type = os.environ["BROWSER_TYPE"]
+
+        if "HEADLESS" in os.environ:
+            config.headless = os.environ["HEADLESS"].lower() in ["true", "1", "yes"]
+
+        if "LIGHT_MODE" in os.environ:
+            config.light_mode = os.environ["LIGHT_MODE"].lower() in ["true", "1", "yes"]
+
+        if "TEXT_MODE" in os.environ:
+            config.text_mode = os.environ["TEXT_MODE"].lower() in ["true", "1", "yes"]
+
+        if "IGNORE_HTTPS_ERRORS" in os.environ:
+            config.ignore_https_errors = os.environ["IGNORE_HTTPS_ERRORS"].lower() in [
+                "true",
+                "1",
+                "yes",
+            ]
 
         return config
 

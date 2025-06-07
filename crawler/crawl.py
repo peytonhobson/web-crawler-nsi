@@ -100,11 +100,11 @@ async def crawl(config: CrawlerConfig = None):
     all_results = []
 
     browser_config = BrowserConfig(
-        browser_type="chromium",
-        headless=True,
-        light_mode=True,
-        text_mode=True,
-        ignore_https_errors=True,
+        browser_type=config.browser_type,
+        headless=config.headless,
+        light_mode=config.light_mode,
+        text_mode=config.text_mode,
+        ignore_https_errors=config.ignore_https_errors,
     )
 
     start_urls = config.start_urls
@@ -125,14 +125,38 @@ async def crawl(config: CrawlerConfig = None):
             )
             for results in response:
                 for r in results:
+                    # Debug: Print all link types found
+                    print(f"Debug: All links found: {r.links}")
+
                     internal_links = r.links.get("internal", [])
                     print(f"Found {len(internal_links)} internal links")
+
+                    # Debug: Print first few internal links if any
+                    if internal_links:
+                        print(f"Sample internal links: {internal_links[:5]}")
+
                     for link in internal_links:
                         normalized_link = normalize_url(link["href"])
-                        if not is_file_url(normalized_link) and is_valid_web_url(
-                            normalized_link
-                        ):
-                            unique_links.add(normalized_link)
+                        print(
+                            f"Debug: Processing link {link['href']} -> "
+                            f"{normalized_link}"
+                        )
+
+                        if not is_file_url(normalized_link):
+                            print(f"Debug: Not a file URL: {normalized_link}")
+                            if is_valid_web_url(normalized_link):
+                                print(
+                                    f"Debug: Valid web URL, adding: "
+                                    f"{normalized_link}"
+                                )
+                                unique_links.add(normalized_link)
+                            else:
+                                print(
+                                    f"Debug: Invalid web URL, skipping: "
+                                    f"{normalized_link}"
+                                )
+                        else:
+                            print(f"Debug: File URL, skipping: {normalized_link}")
 
         print(f"Found {len(unique_links)} unique links.")
 
