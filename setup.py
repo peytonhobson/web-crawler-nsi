@@ -8,7 +8,7 @@ setup(
         "crawl4ai~=0.6.0",
         "python-dotenv~=1.0.0",
         "pinecone~=6.0.0",
-        "langchain~=0.1.0",
+        "langchain~=0.3.0",
         "openai~=1.0.0",
         "playwright~=1.49.0",
         "asyncio~=3.4.0",
