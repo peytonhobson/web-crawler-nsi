@@ -126,6 +126,7 @@ async def crawl(config: CrawlerConfig = None):
             for results in response:
                 for r in results:
                     internal_links = r.links.get("internal", [])
+                    print(f"Found {len(internal_links)} internal links")
                     for link in internal_links:
                         normalized_link = normalize_url(link["href"])
                         if not is_file_url(normalized_link) and is_valid_web_url(
