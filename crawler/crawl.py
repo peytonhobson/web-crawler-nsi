@@ -14,6 +14,7 @@ from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
 from crawler.clean_markdown import process_markdown_results
 from crawler.config import CrawlerConfig
+from crawler.custom_markdown import create_custom_markdown_generator
 
 
 async def crawl(config: CrawlerConfig = None):
@@ -227,12 +228,36 @@ async def crawl(config: CrawlerConfig = None):
 
     # Filter out empty content
     final_results = []
+    custom_generator = create_custom_markdown_generator()
+
     for res in processed_pages:
         try:
-            # Skip empty content
-            if not res.markdown or res.markdown.isspace():
-                print(f"Skipping empty content for {res.url}")
-                continue
+            # Check if markdown generation failed (empty or just whitespace)
+            if (
+                not res.markdown
+                or res.markdown.isspace()
+                or len(res.markdown.strip()) <= 1
+            ):
+                print(
+                    f"Markdown generation failed for {res.url}, trying custom generator..."
+                )
+
+                # Try custom markdown generator as fallback
+                if hasattr(res, "html") and res.html:
+                    custom_markdown = custom_generator.generate_markdown(
+                        res.html, res.url
+                    )
+                    if custom_markdown and len(custom_markdown.strip()) > 10:
+                        res.markdown = custom_markdown
+                        print(f"✅ Custom markdown generation succeeded for {res.url}")
+                    else:
+                        print(
+                            f"❌ Custom markdown generation also failed for {res.url}"
+                        )
+                        continue
+                else:
+                    print(f"❌ No HTML available for custom processing: {res.url}")
+                    continue
 
             # Add metadata to the result object
             res.page_path = sanitize_filename(res.url)

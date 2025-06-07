@@ -8,6 +8,7 @@ langchain-openai~=0.3.0
 playwright~=1.49.0
 asyncio~=3.4.0
 sendgrid~=6.10.0  # For email notifications
+beautifulsoup4~=4.12.0  # For HTML parsing
 
 # Vector embeddings
 openai
