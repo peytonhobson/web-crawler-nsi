@@ -27,7 +27,7 @@ class CrawlerConfig:
         default_factory=lambda: ["footer", "nav", "header"]
     )
     exclude_hidden_elements: bool = True
-    delay_before_return_html: int = 1
+    delay_before_return_html: int = 3
 
     # Validation parameters
     expected_chunks: int = 0  # 0 means no validation
