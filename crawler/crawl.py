@@ -41,6 +41,15 @@ async def crawl(config: CrawlerConfig = None):
         max_depth=config.max_depth, include_external=config.include_external
     )
 
+    # Prepare JavaScript for link collection (including infinite scroll if enabled)
+    link_js_code = []
+    if config.enable_infinite_scroll:
+        link_js_code.append(
+            get_infinite_scroll_js(
+                config.infinite_scroll_max_scrolls, config.infinite_scroll_delay
+            )
+        )
+
     crawler_link_config = CrawlerRunConfig(
         deep_crawl_strategy=deep_crawl,
         exclude_external_links=True,
@@ -51,6 +60,7 @@ async def crawl(config: CrawlerConfig = None):
         scan_full_page=True,
         # Use a simpler markdown generator for link extraction
         markdown_generator=None,  # Use default simple markdown
+        js_code=link_js_code,
     )
 
     openai_config = LLMConfig(
@@ -414,6 +424,75 @@ def get_dialogue_foundry_removal_js():
             });
         }
     })();
+    """
+
+
+def get_infinite_scroll_js(max_scrolls=20, delay=2.0):
+    """Return JavaScript code that performs infinite scrolling to load all content.
+
+    Args:
+        max_scrolls (int): Maximum number of scroll attempts
+        delay (float): Delay in seconds between scroll attempts
+
+    Returns:
+        str: JavaScript code for infinite scrolling
+    """
+    return f"""
+    (async () => {{
+        console.log('Starting infinite scroll with max_scrolls={max_scrolls}, delay={delay}s');
+        
+        let scrollCount = 0;
+        let lastHeight = document.body.scrollHeight;
+        let noChangeCount = 0;
+        
+        while (scrollCount < {max_scrolls} && noChangeCount < 3) {{
+            // Scroll to bottom
+            window.scrollTo(0, document.body.scrollHeight);
+            
+            // Wait for content to load
+            await new Promise(resolve => setTimeout(resolve, {int(delay * 1000)}));
+            
+            // Check if new content loaded
+            let newHeight = document.body.scrollHeight;
+            if (newHeight === lastHeight) {{
+                noChangeCount++;
+                console.log(`No new content loaded (attempt ${{noChangeCount}}/3)`);
+            }} else {{
+                noChangeCount = 0;
+                console.log(`New content loaded. Height: ${{lastHeight}} -> ${{newHeight}}`);
+                lastHeight = newHeight;
+            }}
+            
+            scrollCount++;
+            
+            // Look for "Load More" buttons and click them
+            const loadMoreButtons = document.querySelectorAll([
+                'button[class*="load"][class*="more"]',
+                'button[class*="show"][class*="more"]',
+                'a[class*="load"][class*="more"]',
+                'a[class*="show"][class*="more"]',
+                '.load-more',
+                '.show-more',
+                '.load-more-products',
+                '.pagination-next',
+                '.next-page'
+            ].join(','));
+            
+            for (let button of loadMoreButtons) {{
+                if (button.offsetParent !== null) {{ // Check if visible
+                    console.log('Clicking load more button:', button);
+                    button.click();
+                    await new Promise(resolve => setTimeout(resolve, {int(delay * 1000)}));
+                    break;
+                }}
+            }}
+        }}
+        
+        console.log(`Infinite scroll completed. Total scrolls: ${{scrollCount}}, Final height: ${{document.body.scrollHeight}}`);
+        
+        // Scroll back to top for consistency
+        window.scrollTo(0, 0);
+    }})();
     """
 
 

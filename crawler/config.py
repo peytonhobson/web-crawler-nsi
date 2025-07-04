@@ -29,6 +29,11 @@ class CrawlerConfig:
     exclude_hidden_elements: bool = True
     delay_before_return_html: int = 3
 
+    # Infinite scroll configuration
+    enable_infinite_scroll: bool = True
+    infinite_scroll_max_scrolls: int = 20
+    infinite_scroll_delay: float = 2.0
+
     # Validation parameters
     expected_chunks: int = 0  # 0 means no validation
     chunk_threshold_pct: float = 20.0  # Default 20% threshold
@@ -215,6 +220,20 @@ class CrawlerConfig:
 
         if "USER_AGENT" in os.environ:
             config.user_agent = os.environ["USER_AGENT"]
+
+        # Infinite scroll configuration
+        if "ENABLE_INFINITE_SCROLL" in os.environ:
+            config.enable_infinite_scroll = os.environ[
+                "ENABLE_INFINITE_SCROLL"
+            ].lower() in ["true", "1", "yes"]
+
+        if "INFINITE_SCROLL_MAX_SCROLLS" in os.environ:
+            config.infinite_scroll_max_scrolls = int(
+                os.environ["INFINITE_SCROLL_MAX_SCROLLS"]
+            )
+
+        if "INFINITE_SCROLL_DELAY" in os.environ:
+            config.infinite_scroll_delay = float(os.environ["INFINITE_SCROLL_DELAY"])
 
         return config
 
