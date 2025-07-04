@@ -25,7 +25,8 @@ def process_markdown_results(results):
 
 def remove_all_markdown_links(results):
     """
-    Remove all markdown links from all documents, preserving only the link text.
+    Remove all markdown links from all documents, preserving only the link
+    text.
 
     Args:
         results (list): List of crawler result objects
@@ -40,14 +41,29 @@ def remove_all_markdown_links(results):
     link_pattern = re.compile(r"\[(.*?)\]\((.*?)\)")
 
     for result in results:
-        if not hasattr(result, "markdown") or not result.markdown:
+        # Determine which markdown content to use
+        markdown_content = None
+
+        # Check for result.markdown first
+        if hasattr(result, "markdown") and isinstance(result.markdown, str):
+            markdown_content = result.markdown
+        # Check for result.markdown.fit_markdown as fallback
+        elif (
+            hasattr(result, "markdown")
+            and hasattr(result.markdown, "fit_markdown")
+            and isinstance(result.markdown.fit_markdown, str)
+        ):
+            markdown_content = result.markdown.fit_markdown
+
+        # Skip if no valid markdown content found
+        if not markdown_content:
             processed_results.append(result)
             continue
 
         # Replace all links with just their text content
-        modified_content = link_pattern.sub(r"\1", result.markdown.fit_markdown)
+        modified_content = link_pattern.sub(r"\1", markdown_content)
 
-        # Update the markdown content
+        # Update the markdown content (always set result.markdown)
         result.markdown = modified_content
         processed_results.append(result)
 
