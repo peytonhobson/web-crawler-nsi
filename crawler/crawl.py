@@ -221,10 +221,30 @@ async def crawl(config: CrawlerConfig = None):
 
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
+    # Debug: Check status codes of all results
+    print("Debug: Status codes of all results:")
+    for i, res in enumerate(all_results):
+        status = getattr(res, "status_code", "NO_STATUS_CODE")
+        url = getattr(res, "url", "NO_URL")
+        print(f"  Result {i}: URL={url}, Status={status}")
+
     valid_pages = [res for res in all_results if res.status_code == 200]
+    print(f"Debug: After status filtering: {len(valid_pages)} valid pages")
 
     print("Post-processing results to remove links...")
     processed_pages = process_markdown_results(valid_pages)
+    print(
+        f"Debug: After process_markdown_results: "
+        f"{len(processed_pages)} processed pages"
+    )
+
+    # Debug: Check if processed pages have markdown content
+    print("Debug: Checking markdown content of processed pages:")
+    for i, res in enumerate(processed_pages):
+        url = getattr(res, "url", "NO_URL")
+        markdown = getattr(res, "markdown", None)
+        markdown_len = len(markdown) if markdown else 0
+        print(f"  Processed {i}: URL={url}, Markdown len={markdown_len}")
 
     # Filter out empty content
     final_results = []
