@@ -86,6 +86,7 @@ class CrawlerConfig:
     light_mode: bool = True
     text_mode: bool = True
     ignore_https_errors: bool = True
+    user_agent: str = "UntapAI-Crawler"
 
     # Output directories
     output_dir: str = "cleaned_output"
@@ -211,6 +212,9 @@ class CrawlerConfig:
                 "1",
                 "yes",
             ]
+
+        if "USER_AGENT" in os.environ:
+            config.user_agent = os.environ["USER_AGENT"]
 
         return config
 
