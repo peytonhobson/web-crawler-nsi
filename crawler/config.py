@@ -88,8 +88,8 @@ class CrawlerConfig:
     # Browser configuration
     browser_type: str = "chromium"
     headless: bool = True
-    light_mode: bool = True
-    text_mode: bool = True
+    light_mode: bool = False  # Enable full features for JS execution
+    text_mode: bool = False  # Enable images/content for proper infinite scroll
     ignore_https_errors: bool = True
     user_agent: str = "UntapAI-Crawler"
 
