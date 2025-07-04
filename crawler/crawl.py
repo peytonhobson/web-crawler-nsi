@@ -228,7 +228,8 @@ async def crawl(config: CrawlerConfig = None):
         url = getattr(res, "url", "NO_URL")
         print(f"  Result {i}: URL={url}, Status={status}")
 
-    valid_pages = [res for res in all_results if res.status_code == 200]
+    # Accept all 2xx success codes (200, 201, 202, 204, 206, etc.)
+    valid_pages = [res for res in all_results if 200 <= res.status_code < 300]
     print(f"Debug: After status filtering: {len(valid_pages)} valid pages")
 
     print("Post-processing results to remove links...")

@@ -212,8 +212,6 @@ class CrawlerConfig:
                 "yes",
             ]
 
-        print("config", config)
-
         return config
 
     @classmethod
