@@ -44,16 +44,58 @@ def is_file_link(url):
         return False
 
 
+def is_image_link(url):
+    """Check if a URL points to an image file.
+
+    Args:
+        url (str): The URL to check
+
+    Returns:
+        bool: True if the URL points to an image file, False otherwise
+    """
+    try:
+        parsed_url = urlparse(url)
+        path = parsed_url.path.lower()
+
+        # Common image file extensions
+        image_extensions = {
+            "jpg",
+            "jpeg",
+            "png",
+            "gif",
+            "bmp",
+            "svg",
+            "webp",
+            "ico",
+            "tiff",
+            "tif",
+            "avif",
+            "heic",
+            "heif",
+        }
+
+        # Check if the file extension is an image type
+        if "." in path:
+            extension = path.split(".")[-1]
+            return extension in image_extensions
+
+        return False
+    except Exception:
+        return False
+
+
 def remove_web_page_links(results):
     """
-    Remove web page links from all documents while preserving file links (PDFs, etc.).
-    Only removes links that point to web pages, keeps links to files.
+    Remove web page and image links while preserving non-image file links.
+    Only preserves links to files like PDFs, docs, etc. Images are treated
+    like web page links (text only).
 
     Args:
         results (list): List of crawler result objects
 
     Returns:
-        list: Processed results with web page links removed, file links preserved
+        list: Processed results with web page and image links removed,
+              non-image file links preserved
     """
     processed_results = []
 
@@ -71,10 +113,10 @@ def remove_web_page_links(results):
             link_url = match.group(2)
 
             # If it's a file link, preserve the entire markdown link
-            if is_file_link(link_url):
+            if is_file_link(link_url) and not is_image_link(link_url):
                 return f"[{link_text}]({link_url})"
             else:
-                # If it's a web page link, just return the text
+                # If it's a web page link or an image link, just return the text
                 return link_text
 
         # Replace links selectively
