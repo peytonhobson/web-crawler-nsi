@@ -10,6 +10,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, Content
 from crawler.crawl import crawl
 from chunk_content import chunk_content
+from summary import summarize_content
 from vectordb.pinecone import upload_chunks
 from crawler.config import CrawlerConfig
 
@@ -41,38 +42,6 @@ def format_time(seconds):
         return f"{int(minutes)}m {seconds:.2f}s"
     else:
         return f"{seconds:.2f}s"
-
-
-def convert_chunks_for_upload(chunked_documents):
-    """Convert Document objects from chunking to the format expected by upload.
-
-    Args:
-        chunked_documents: List of Document objects from chunk_content
-
-    Returns:
-        List of objects with .url, .chunk_name, and .markdown attributes
-    """
-    from types import SimpleNamespace
-
-    converted_results = []
-    for i, chunk in enumerate(chunked_documents):
-        # Create result object with expected attributes
-        result = SimpleNamespace()
-
-        # Get metadata from the chunk
-        result.url = chunk.metadata.get("url", "unknown")
-        result.page_path = chunk.metadata.get("page_path", "unknown")
-
-        # Create chunk name from URL and index
-        url_part = result.url.split("//")[-1].replace("/", "_").replace(":", "_")
-        result.chunk_name = f"{url_part}_chunk_{i}"
-
-        # Use page_content as markdown
-        result.markdown = chunk.page_content
-
-        converted_results.append(result)
-
-    return converted_results
 
 
 async def main(dry_run=False):
@@ -112,24 +81,25 @@ async def main(dry_run=False):
             f"in {format_time(chunk_time)}"
         )
 
-        # Skip summarization but convert chunks to expected format
-        logger.info("Skipping summarization - converting chunks to upload format")
+        # Run summarization with the chunk results and configuration
+        logger.info("Starting content summarization...")
         summary_start_time = time.time()
-        final_results = convert_chunks_for_upload(chunked_results)
+        summarized_results = summarize_content(chunked_results, config)
         summary_time = time.time() - summary_start_time
-        results_count = len(final_results)
+        results_count = len(summarized_results)
         logger.info(
-            f"Converted {results_count} chunks for upload in {format_time(summary_time)}"
+            f"Summarization completed with {results_count} results "
+            f"in {format_time(summary_time)}"
         )
 
         # Get Pinecone index name from environment
         pinecone_index = os.environ.get("PINECONE_INDEX_NAME", "unknown")
 
         if config.dry_run:
-            # Save the final results instead of uploading to Pinecone
+            # Save the summarized results instead of uploading to Pinecone
             logger.info(f"Saving results to {config.output_dir} folder")
             save_start_time = time.time()
-            save_results_to_folder(final_results, config.output_dir)
+            save_results_to_folder(summarized_results, config.output_dir)
             save_time = time.time() - save_start_time
             logger.info(f"Results saved to folder in {format_time(save_time)}")
         else:
@@ -187,7 +157,7 @@ async def main(dry_run=False):
             # Run Pinecone upload with configuration if validation passed
             if should_upload:
                 upload_start_time = time.time()
-                upload_chunks(final_results, config)
+                upload_chunks(summarized_results, config)
                 upload_time = time.time() - upload_start_time
                 logger.info(
                     f"Upload to Pinecone completed in {format_time(upload_time)}"
@@ -267,11 +237,14 @@ def save_results_to_folder(results, output_dir="cleaned_output"):
 
         # Save each result as a simple text file
         for i, result in enumerate(results):
-            # Get chunk name for filename
-            chunk_name = getattr(result, "chunk_name", f"chunk_{i}")
+            # Get URL for filename
+            page_path = getattr(result, "chunk_name", "unknown")
+            page_path_part = (
+                page_path.split("//")[-1].replace("/", "_").replace(":", "_")
+            )
 
-            # Create filename with chunk name
-            filename = f"{chunk_name}.md"
+            # Create filename with index for uniqueness
+            filename = f"{page_path_part}.md"
             file_path = output_dir / filename
 
             # Write the content to the file
