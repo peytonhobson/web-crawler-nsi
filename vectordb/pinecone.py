@@ -59,7 +59,8 @@ class PineconeUploader:
             api_key: Pinecone API key
             index_name: Name of Pinecone index
             chunk_id_prefix: Prefix for chunk IDs
-            record_retention_hours: How many hours to keep old records before deletion
+            record_retention_hours: How many hours to keep old records before
+                deletion
             upsert_batch_size: Number of records to upsert in each batch
             delete_old_records: Whether to delete old records
         """
@@ -112,6 +113,28 @@ class PineconeUploader:
         sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", ascii_str)
         return sanitized
 
+    def extract_f_codes(self, text: str) -> str:
+        """
+        Extract f-code from text using regex.
+        F-codes are defined as the letter 'f' followed by 5-7 digits.
+        Assumes each chunk has at most one f-code.
+
+        Args:
+            text: The text to search for f-codes
+
+        Returns:
+            Single f-code found in the text, or None if not found
+        """
+        if not text:
+            return None
+
+        # Regex pattern: f followed by 5-7 digits (case insensitive)
+        pattern = r"[fF]\d{5,7}"
+        match = re.search(pattern, text)
+
+        # Return the first f-code found, converted to lowercase for consistency
+        return match.group(0).lower() if match else None
+
     def upsert_records(self, records) -> int:
         """
         Upserts the provided records to the Pinecone index using server-side
@@ -123,7 +146,8 @@ class PineconeUploader:
         try:
             total_records = len(records)
             logger.info(
-                f"Upserting {total_records} records into namespace: {self.web_namespace}"
+                f"Upserting {total_records} records into namespace: "
+                f"{self.web_namespace}"
             )
 
             # Format all records first
@@ -133,6 +157,9 @@ class PineconeUploader:
                 url = record.url
                 chunk_name = record.chunk_name
                 chunk_text = record.markdown
+
+                # Extract f-codes from the chunk text
+                f_code = self.extract_f_codes(chunk_text)
 
                 # Create a record with ID and text field for embedding
                 formatted_record = {
@@ -146,6 +173,12 @@ class PineconeUploader:
                     "url": url,
                     "upload_timestamp": datetime.now().isoformat(),
                 }
+
+                # Add f-code to metadata if found
+                if f_code:
+                    formatted_record["f_code"] = f_code
+                    logger.debug(f"Found f-code in chunk {chunk_name}: {f_code}")
+
                 formatted_records.append(formatted_record)
 
             # Process records in batches
@@ -154,7 +187,8 @@ class PineconeUploader:
             records_upserted = 0
 
             logger.info(
-                f"Processing {total_batches} batches of up to {batch_size} records each"
+                f"Processing {total_batches} batches of up to {batch_size} "
+                f"records each"
             )
 
             for i in range(total_batches):
@@ -164,7 +198,8 @@ class PineconeUploader:
 
                 batch_count = len(batch)
                 logger.info(
-                    f"Upserting batch {i+1}/{total_batches} with {batch_count} records"
+                    f"Upserting batch {i+1}/{total_batches} with "
+                    f"{batch_count} records"
                 )
 
                 # Use upsert_records which handles server-side embedding
@@ -216,7 +251,8 @@ class PineconeUploader:
 
             total_deleted = 0
             logger.info(
-                f"Listing all vectors with prefix '{self.chunk_id_prefix}' in batches..."
+                f"Listing all vectors with prefix '{self.chunk_id_prefix}' "
+                f"in batches..."
             )
 
             # Process each batch of IDs from the index.list generator
@@ -225,7 +261,7 @@ class PineconeUploader:
             ):
                 if not batch:
                     continue
-                logger.info(f"Processing batch of {len(batch)} vectors " f"with prefix")
+                logger.info(f"Processing batch of {len(batch)} vectors with prefix")
                 # Fetch this batch
                 try:
                     response = self.index.fetch(ids=batch, namespace=self.web_namespace)
@@ -250,19 +286,21 @@ class PineconeUploader:
                                 )
                         except (ValueError, TypeError) as e:
                             logger.warning(
-                                f"Could not parse timestamp {upload_timestamp} "
-                                f"for vector {vector_id}: {e}"
+                                f"Could not parse timestamp "
+                                f"{upload_timestamp} for vector "
+                                f"{vector_id}: {e}"
                             )
                     else:
                         logger.warning(
-                            f"Vector {vector_id} has no upload_timestamp metadata"
+                            f"Vector {vector_id} has no upload_timestamp " f"metadata"
                         )
 
                 # Delete old vectors in this batch
                 if old_vector_ids:
                     try:
                         logger.info(
-                            f"Deleting {len(old_vector_ids)} old vectors in this batch"
+                            f"Deleting {len(old_vector_ids)} old vectors "
+                            f"in this batch"
                         )
                         self.index.delete(
                             ids=old_vector_ids, namespace=self.web_namespace
