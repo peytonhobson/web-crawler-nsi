@@ -422,33 +422,16 @@ def get_elementor_removal_js(excluded_types):
 
     combined_selector = ", ".join(selectors)
 
+    print(f"Combined selector: {combined_selector}")
+
     return f"""
     (async () => {{
-        console.log('🔍 Starting Elementor removal for types: {excluded_types}');
-        
-        // Combined selector for all elementor types
-        const selector = '{combined_selector}';
-        console.log('📍 Using selector:', selector);
-        
-        const elements = document.querySelectorAll(selector);
-        console.log('📊 Found', elements.length, 'elementor elements to remove');
+        // Combined selector for all excluded elementor types: {combined_selector}
+        const elements = document.querySelectorAll('{combined_selector}');
         
         if (elements.length > 0) {{
-            elements.forEach((el, index) => {{
-                const elementType = el.getAttribute('data-elementor-type');
-                const elementId = el.getAttribute('data-elementor-id');
-                console.log(`🗑️  Removing elementor element ${{index + 1}}:`, elementType, 'ID:', elementId);
+            elements.forEach(el => {{
                 el.remove();
-            }});
-            console.log('✅ Elementor removal complete');
-        }} else {{
-            console.log('⚠️  No elementor elements found with selector:', selector);
-            
-            // Debug: Check what elementor elements actually exist
-            const allElementor = document.querySelectorAll('[data-elementor-type]');
-            console.log('🔍 All elementor elements found:', allElementor.length);
-            allElementor.forEach(el => {{
-                console.log('  - Type:', el.getAttribute('data-elementor-type'), 'ID:', el.getAttribute('data-elementor-id'));
             }});
         }}
     }})();
