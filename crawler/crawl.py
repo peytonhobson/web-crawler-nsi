@@ -415,24 +415,42 @@ def get_elementor_removal_js(excluded_types):
     if not excluded_types:
         return ""
 
-    types_str = "', '".join(excluded_types)
+    # Create individual selectors for each type
+    selectors = []
+    for elementor_type in excluded_types:
+        selectors.append(f'[data-elementor-type="{elementor_type}"]')
+
+    combined_selector = ", ".join(selectors)
 
     return f"""
     (async () => {{
-        const excludedTypes = ['{types_str}'];
-        console.log('Removing Elementor elements with types:', excludedTypes);
+        console.log('🔍 Starting Elementor removal for types: {excluded_types}');
         
-        excludedTypes.forEach(type => {{
-            const selector = `[data-elementor-type="${{type}}"]`;
-            const elements = document.querySelectorAll(selector);
+        // Combined selector for all elementor types
+        const selector = '{combined_selector}';
+        console.log('📍 Using selector:', selector);
+        
+        const elements = document.querySelectorAll(selector);
+        console.log('📊 Found', elements.length, 'elementor elements to remove');
+        
+        if (elements.length > 0) {{
+            elements.forEach((el, index) => {{
+                const elementType = el.getAttribute('data-elementor-type');
+                const elementId = el.getAttribute('data-elementor-id');
+                console.log(`🗑️  Removing elementor element ${{index + 1}}:`, elementType, 'ID:', elementId);
+                el.remove();
+            }});
+            console.log('✅ Elementor removal complete');
+        }} else {{
+            console.log('⚠️  No elementor elements found with selector:', selector);
             
-            if (elements.length > 0) {{
-                console.log(`Found ${{elements.length}} elementor elements with type: ${{type}}`);
-                elements.forEach(el => {{
-                    el.remove();
-                }});
-            }}
-        }});
+            // Debug: Check what elementor elements actually exist
+            const allElementor = document.querySelectorAll('[data-elementor-type]');
+            console.log('🔍 All elementor elements found:', allElementor.length);
+            allElementor.forEach(el => {{
+                console.log('  - Type:', el.getAttribute('data-elementor-type'), 'ID:', el.getAttribute('data-elementor-id'));
+            }});
+        }}
     }})();
     """
 
