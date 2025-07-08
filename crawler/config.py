@@ -26,6 +26,9 @@ class CrawlerConfig:
     excluded_tags: List[str] = field(
         default_factory=lambda: ["footer", "nav", "header"]
     )
+    excluded_elementor_types: List[str] = field(
+        default_factory=lambda: ["header", "footer"]
+    )
     exclude_hidden_elements: bool = True
     delay_before_return_html: int = 3
 
@@ -177,6 +180,18 @@ class CrawlerConfig:
                 # Fallback to comma-separated string
                 config.excluded_tags = [
                     tag.strip() for tag in os.environ["EXCLUDED_TAGS"].split(",")
+                ]
+
+        if "EXCLUDED_ELEMENTOR_TYPES" in os.environ:
+            try:
+                config.excluded_elementor_types = json.loads(
+                    os.environ["EXCLUDED_ELEMENTOR_TYPES"]
+                )
+            except json.JSONDecodeError:
+                # Fallback to comma-separated string
+                config.excluded_elementor_types = [
+                    tag.strip()
+                    for tag in os.environ["EXCLUDED_ELEMENTOR_TYPES"].split(",")
                 ]
 
         # Directory settings

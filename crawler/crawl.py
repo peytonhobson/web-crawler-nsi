@@ -89,23 +89,7 @@ async def crawl(config: CrawlerConfig = None):
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
-        ],
-    )
-
-    # Crawler config for repeated elements to crawl once
-    crawler_config_repeated_elements = CrawlerRunConfig(
-        target_elements=config.excluded_tags,
-        markdown_generator=md_generator,
-        exclude_external_links=True,
-        exclude_social_media_links=True,
-        exclude_external_images=True,
-        verbose=config.verbose,
-        delay_before_return_html=config.delay_before_return_html,
-        scan_full_page=True,
-        js_code=[
-            config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
-            get_dialogue_foundry_removal_js(),
-            get_universal_structure_fix_js(),
+            get_elementor_removal_js(config.excluded_elementor_types),
         ],
     )
 
@@ -221,13 +205,6 @@ async def crawl(config: CrawlerConfig = None):
             all_results.extend(results_list)
 
             print(f"Completed batch {batch_num + 1}/{total_batches}")
-
-        for start_url in start_urls:
-            results = await crawler.arun(
-                start_url, config=crawler_config_repeated_elements
-            )
-            results.url = "repeated_elements"
-            all_results.append(results)
 
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
@@ -423,6 +400,40 @@ def get_dialogue_foundry_removal_js():
             });
         }
     })();
+    """
+
+
+def get_elementor_removal_js(excluded_types):
+    """Return JavaScript code that removes Elementor elements by data-elementor-type.
+
+    Args:
+        excluded_types (list): List of elementor types to remove (e.g., ['header', 'footer'])
+
+    Returns:
+        str: JavaScript code for removing specified Elementor elements
+    """
+    if not excluded_types:
+        return ""
+
+    types_str = "', '".join(excluded_types)
+
+    return f"""
+    (async () => {{
+        const excludedTypes = ['{types_str}'];
+        console.log('Removing Elementor elements with types:', excludedTypes);
+        
+        excludedTypes.forEach(type => {{
+            const selector = `[data-elementor-type="${{type}}"]`;
+            const elements = document.querySelectorAll(selector);
+            
+            if (elements.length > 0) {{
+                console.log(`Found ${{elements.length}} elementor elements with type: ${{type}}`);
+                elements.forEach(el => {{
+                    el.remove();
+                }});
+            }}
+        }});
+    }})();
     """
 
 
