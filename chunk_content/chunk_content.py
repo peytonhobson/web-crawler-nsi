@@ -1,6 +1,29 @@
 #!/usr/bin/env python3
+import re
 from chunk_content.chunk_utils import character_chunk_documents
 from langchain_core.documents import Document
+
+
+def extract_f_code_from_page(text: str) -> str:
+    """
+    Extract f-code from page text using regex.
+    F-codes are defined as the letter 'f' followed by 5-7 digits.
+
+    Args:
+        text: The text to search for f-codes
+
+    Returns:
+        Single f-code found in the text, or None if not found
+    """
+    if not text:
+        return None
+
+    # Regex pattern: f followed by 5-7 digits (case insensitive)
+    pattern = r"[fF]\d{5,7}"
+    match = re.search(pattern, text)
+
+    # Return the first f-code found, converted to lowercase for consistency
+    return match.group(0).lower() if match else None
 
 
 def chunk_content(crawl_results, config=None):
@@ -24,13 +47,24 @@ def chunk_content(crawl_results, config=None):
             content = result.markdown
             url = result.url
 
+            # Check if this page contains an f-code
+            page_f_code = extract_f_code_from_page(content)
+
+            # Create document metadata
+            metadata = {
+                "url": url,
+                "page_path": result.page_path,
+            }
+
+            # Add f-code to metadata if found on the page
+            if page_f_code:
+                metadata["f_code"] = page_f_code
+                print(f"Found f-code '{page_f_code}' on page: {url}")
+
             # Create Document object
             doc = Document(
                 page_content=content,
-                metadata={
-                    "url": url,
-                    "page_path": result.page_path,
-                },
+                metadata=metadata,
             )
             docs.append(doc)
             file_count += 1

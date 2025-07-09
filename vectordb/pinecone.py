@@ -113,28 +113,6 @@ class PineconeUploader:
         sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", ascii_str)
         return sanitized
 
-    def extract_f_codes(self, text: str) -> str:
-        """
-        Extract f-code from text using regex.
-        F-codes are defined as the letter 'f' followed by 5-7 digits.
-        Assumes each chunk has at most one f-code.
-
-        Args:
-            text: The text to search for f-codes
-
-        Returns:
-            Single f-code found in the text, or None if not found
-        """
-        if not text:
-            return None
-
-        # Regex pattern: f followed by 5-7 digits (case insensitive)
-        pattern = r"[fF]\d{5,7}"
-        match = re.search(pattern, text)
-
-        # Return the first f-code found, converted to lowercase for consistency
-        return match.group(0).lower() if match else None
-
     def upsert_records(self, records) -> int:
         """
         Upserts the provided records to the Pinecone index using server-side
@@ -146,7 +124,7 @@ class PineconeUploader:
         try:
             total_records = len(records)
             logger.info(
-                f"Upserting {total_records} records into namespace: "
+                f"Upsert {total_records} records into namespace: "
                 f"{self.web_namespace}"
             )
 
@@ -158,8 +136,12 @@ class PineconeUploader:
                 chunk_name = record.chunk_name
                 chunk_text = record.markdown
 
-                # Extract f-codes from the chunk text
-                f_code = self.extract_f_codes(chunk_text)
+                # Get f-code from chunk metadata if available
+                f_code = getattr(record, "f_code", None)
+
+                # If not in record attributes, check metadata
+                if not f_code and hasattr(record, "metadata"):
+                    f_code = record.metadata.get("f_code", None)
 
                 # Create a record with ID and text field for embedding
                 formatted_record = {
@@ -174,10 +156,10 @@ class PineconeUploader:
                     "upload_timestamp": datetime.now().isoformat(),
                 }
 
-                # Add f-code to metadata if found
+                # Add f-code to metadata if found in chunk metadata
                 if f_code:
                     formatted_record["f_code"] = f_code
-                    logger.debug(f"Found f-code in chunk {chunk_name}: {f_code}")
+                    logger.debug(f"Added f-code '{f_code}' to chunk {chunk_name}")
 
                 formatted_records.append(formatted_record)
 

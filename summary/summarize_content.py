@@ -111,6 +111,11 @@ def process_chunk(chunk, model_name, temperature):
                 f"[View Source]({url})\n\n" f"Keywords: {keywords}\n\n" f"{content}"
             )
 
+            # Log f-code if present
+            f_code = getattr(result, "f_code", None)
+            if f_code:
+                print(f"Preserved f-code '{f_code}' in chunk from {url}")
+
             print(f"Updated chunk from {url} with keywords")
             return "kept", result
     except Exception as e:
