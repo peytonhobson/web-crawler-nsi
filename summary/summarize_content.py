@@ -91,33 +91,29 @@ def process_chunk(chunk, model_name, temperature):
         # Process content using the API
         keep, keywords = process_chunk_content(content, client, model_name, temperature)
 
-        if not keep:
-            print(f"Marked for deletion: chunk from {url} - no useful content")
-            return "deleted", None
-        else:
-            # Create a new result object similar to the crawl results
-            # to maintain compatibility with downstream processing
-            from types import SimpleNamespace
+        # Create a new result object similar to the crawl results
+        # to maintain compatibility with downstream processing
+        from types import SimpleNamespace
 
-            result = SimpleNamespace()
+        result = SimpleNamespace()
 
-            # Add the metadata from the original chunk
-            for key, value in chunk.metadata.items():
-                setattr(result, key, value)
+        # Add the metadata from the original chunk
+        for key, value in chunk.metadata.items():
+            setattr(result, key, value)
 
-            # Set standard attributes expected by downstream processes
-            result.url = url
-            result.markdown = (
-                f"[View Source]({url})\n\n" f"Keywords: {keywords}\n\n" f"{content}"
-            )
+        # Set standard attributes expected by downstream processes
+        result.url = url
+        result.markdown = (
+            f"[View Source]({url})\n\n" f"Keywords: {keywords}\n\n" f"{content}"
+        )
 
-            # Log f-code if present
-            f_code = getattr(result, "f_code", None)
-            if f_code:
-                print(f"Preserved f-code '{f_code}' in chunk from {url}")
+        # Log f-code if present
+        f_code = getattr(result, "f_code", None)
+        if f_code:
+            print(f"Preserved f-code '{f_code}' in chunk from {url}")
 
-            print(f"Updated chunk from {url} with keywords")
-            return "kept", result
+        print(f"Updated chunk from {url} with keywords")
+        return "kept", result
     except Exception as e:
         print(f"Error processing chunk from {url}: {e}")
         return "error", None
