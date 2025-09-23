@@ -9,6 +9,7 @@ from crawl4ai import (
     LLMContentFilter,
     LLMConfig,
     DefaultMarkdownGenerator,
+    CacheMode,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawler.sanitize_filename import sanitize_filename
@@ -51,6 +52,7 @@ async def crawl(config: CrawlerConfig = None):
         )
 
     crawler_link_config = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
         deep_crawl_strategy=deep_crawl,
         exclude_external_links=True,
         exclude_social_media_links=True,
@@ -77,6 +79,7 @@ async def crawl(config: CrawlerConfig = None):
     md_generator = DefaultMarkdownGenerator(content_filter=content_filter)
 
     crawler_config = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
         markdown_generator=md_generator,
         excluded_tags=config.excluded_tags,
         exclude_external_links=True,
