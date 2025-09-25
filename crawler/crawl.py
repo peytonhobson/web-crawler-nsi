@@ -105,6 +105,7 @@ async def crawl(config: CrawlerConfig = None):
         light_mode=config.light_mode,
         text_mode=config.text_mode,
         ignore_https_errors=config.ignore_https_errors,
+        enable_stealth=True
     )
 
     start_urls = config.start_urls
