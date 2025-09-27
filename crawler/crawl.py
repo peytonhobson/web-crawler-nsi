@@ -225,7 +225,7 @@ async def crawl(config: CrawlerConfig = None):
         for res in all_results
         if hasattr(res, "status_code")
         and res.status_code is not None
-        and 200 <= res.status_code < 300
+        and 200 <= res.status_code <= 301
     ]
     print(f"Debug: After status filtering: {len(valid_pages)} valid pages")
 
