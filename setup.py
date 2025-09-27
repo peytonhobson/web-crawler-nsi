@@ -5,7 +5,7 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
-        "crawl4ai~=0.6.0",
+        "crawl4ai~=0.7.4",
         "python-dotenv~=1.0.0",
         "pinecone~=6.0.0",
         "langchain~=0.3.0",
