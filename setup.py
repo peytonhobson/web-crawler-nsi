@@ -16,6 +16,7 @@ setup(
         "langchain-openai~=0.3.0",
         "sendgrid~=6.10.0",
         "beautifulsoup4~=4.12.0",
+        "playwright-stealth~=2.0.0",
     ],
     python_requires="~=3.9",
     description=("Web crawler with VectorDB integration for RAG apps"),
