@@ -48,11 +48,11 @@ async def crawl(config: CrawlerConfig = None):
         exclude_external_images=True,
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
-        scan_full_page=True,
-        scroll_delay=0.5,  # Wait between scroll actions to load lazy content
-        max_scroll_steps=None,  # Scroll until all content is loaded
         process_iframes=True,  # Process content within iframes
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
+        js_code=[
+            get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+        ],
         # Use a simpler markdown generator for link extraction
         markdown_generator=None,  # Use default simple markdown
     )
@@ -78,12 +78,10 @@ async def crawl(config: CrawlerConfig = None):
         exclude_external_images=True,
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
-        scan_full_page=True,
-        scroll_delay=0.5,  # Wait between scroll actions to load lazy content
-        max_scroll_steps=None,  # Scroll until all content is loaded
         process_iframes=True,  # Process content within iframes
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
+            get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
@@ -99,12 +97,10 @@ async def crawl(config: CrawlerConfig = None):
         exclude_external_images=True,
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
-        scan_full_page=True,
-        scroll_delay=0.5,  # Wait between scroll actions to load lazy content
-        max_scroll_steps=None,  # Scroll until all content is loaded
         process_iframes=True,  # Process content within iframes
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
+            get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
@@ -315,6 +311,45 @@ async def crawl(config: CrawlerConfig = None):
     print(f"✅ Crawling complete! Processed {len(final_results)} unique pages")
 
     return final_results  # Return the processed results
+
+
+def get_progressive_scroll_js():
+    """Return JavaScript code that progressively scrolls the page to load lazy content.
+    
+    This script scrolls the page in increments, waiting for content to load at each step.
+    It's more effective than scan_full_page for sites with lazy-loaded content.
+    """
+    return """
+    (async () => {
+        const scrollDelay = 500; // Wait 500ms between scrolls
+        const maxScrolls = 20; // Maximum number of scroll attempts
+        
+        let lastHeight = document.body.scrollHeight;
+        let scrollCount = 0;
+        
+        while (scrollCount < maxScrolls) {
+            // Scroll to bottom
+            window.scrollTo(0, document.body.scrollHeight);
+            
+            // Wait for content to load
+            await new Promise(resolve => setTimeout(resolve, scrollDelay));
+            
+            // Check if new content loaded
+            let newHeight = document.body.scrollHeight;
+            if (newHeight === lastHeight) {
+                // No new content, try a few more times to be sure
+                if (scrollCount > 2) break;
+            }
+            
+            lastHeight = newHeight;
+            scrollCount++;
+        }
+        
+        // Scroll back to top for complete capture
+        window.scrollTo(0, 0);
+        await new Promise(resolve => setTimeout(resolve, 200));
+    })();
+    """
 
 
 def get_hidden_elements_removal_js():
