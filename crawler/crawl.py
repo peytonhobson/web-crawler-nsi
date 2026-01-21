@@ -49,6 +49,10 @@ async def crawl(config: CrawlerConfig = None):
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
         scan_full_page=True,
+        scroll_delay=0.5,  # Wait between scroll actions to load lazy content
+        max_scroll_steps=None,  # Scroll until all content is loaded
+        process_iframes=True,  # Process content within iframes
+        remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         # Use a simpler markdown generator for link extraction
         markdown_generator=None,  # Use default simple markdown
     )
@@ -75,6 +79,10 @@ async def crawl(config: CrawlerConfig = None):
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
         scan_full_page=True,
+        scroll_delay=0.5,  # Wait between scroll actions to load lazy content
+        max_scroll_steps=None,  # Scroll until all content is loaded
+        process_iframes=True,  # Process content within iframes
+        remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
@@ -92,6 +100,10 @@ async def crawl(config: CrawlerConfig = None):
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
         scan_full_page=True,
+        scroll_delay=0.5,  # Wait between scroll actions to load lazy content
+        max_scroll_steps=None,  # Scroll until all content is loaded
+        process_iframes=True,  # Process content within iframes
+        remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
@@ -239,7 +251,7 @@ async def crawl(config: CrawlerConfig = None):
         for res in all_results
         if hasattr(res, "status_code")
         and res.status_code is not None
-        and 200 <= res.status_code < 300
+        and 200 <= res.status_code <= 301
     ]
     print(f"Debug: After status filtering: {len(valid_pages)} valid pages")
 
