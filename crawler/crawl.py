@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import requests
 from urllib.parse import urlparse, urlunparse
 from crawl4ai import (
     AsyncWebCrawler,
@@ -52,6 +53,8 @@ async def crawl(config: CrawlerConfig = None):
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
             get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+            get_captcha_detection_js(),  # Detect captcha elements
+            get_ip_check_js(),  # Check IP address
         ],
         # Use a simpler markdown generator for link extraction
         markdown_generator=None,  # Use default simple markdown
@@ -82,6 +85,7 @@ async def crawl(config: CrawlerConfig = None):
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
             get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+            get_captcha_detection_js(),  # Detect captcha elements
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
@@ -101,6 +105,7 @@ async def crawl(config: CrawlerConfig = None):
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
             get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+            get_captcha_detection_js(),  # Detect captcha elements
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
@@ -120,6 +125,15 @@ async def crawl(config: CrawlerConfig = None):
 
     start_urls = config.start_urls
 
+    # Check outbound IP address for debugging
+    try:
+        ip_response = requests.get('https://api.ipify.org?format=json', timeout=5)
+        current_ip = ip_response.json().get('ip', 'Unknown')
+        print(f"🌐 Current outbound IP address: {current_ip}")
+        print(f"   Make sure this IP is whitelisted on the target site!")
+    except Exception as e:
+        print(f"⚠️  Could not determine outbound IP: {e}")
+
     async with AsyncWebCrawler(config=browser_config) as crawler:
         # If no specific start URLs are provided, use a default
         if not config.start_urls:
@@ -136,6 +150,8 @@ async def crawl(config: CrawlerConfig = None):
             )
             for results in response:
                 for r in results:
+                    # Check for captcha indicators
+                    check_captcha_indicators(r, start_url)
                     # Debug: Print all link types found
                     print(f"Debug: All links found: {r.links}")
 
@@ -194,6 +210,10 @@ async def crawl(config: CrawlerConfig = None):
         async def crawl_url(url):
             try:
                 results = await crawler.arun(url, config=crawler_config)
+                # Check for captcha on each page
+                if results:
+                    for result in results:
+                        check_captcha_indicators(result, url)
                 print(f"Completed: {url}")
                 return results
             except Exception as e:
@@ -229,6 +249,10 @@ async def crawl(config: CrawlerConfig = None):
             results = await crawler.arun(
                 start_url, config=crawler_config_repeated_elements
             )
+            # Check for captcha
+            if results:
+                for result in results:
+                    check_captcha_indicators(result, start_url)
             results.url = "repeated_elements"
             all_results.append(results)
 
@@ -311,6 +335,167 @@ async def crawl(config: CrawlerConfig = None):
     print(f"✅ Crawling complete! Processed {len(final_results)} unique pages")
 
     return final_results  # Return the processed results
+
+
+def check_captcha_indicators(result, url):
+    """
+    Check HTML content for captcha indicators and log warnings.
+    
+    Args:
+        result: Crawler result object
+        url: URL that was crawled
+    """
+    html = result.html if hasattr(result, 'html') and result.html else ""
+    status_code = getattr(result, 'status_code', None)
+    
+    if not html:
+        print(f"⚠️  No HTML content for {url} (Status: {status_code})")
+        return
+    
+    html_lower = html.lower()
+    captcha_indicators = [
+        "captcha",
+        "recaptcha",
+        "hcaptcha",
+        "verify you are human",
+        "challenge",
+        "cloudflare",
+        "checking your browser",
+        "just a moment",
+        "ddos protection",
+        "access denied",
+    ]
+    
+    found_indicators = [ind for ind in captcha_indicators if ind in html_lower]
+    
+    if found_indicators:
+        print(f"\n🚨 CAPTCHA WARNING for {url}:")
+        print(f"   Status code: {status_code}")
+        print(f"   Found indicators: {', '.join(found_indicators)}")
+        print(f"   HTML length: {len(html)} bytes")
+        
+        # Check for specific captcha elements
+        if "recaptcha" in html_lower:
+            print(f"   ⚠️  reCAPTCHA detected!")
+        if "hcaptcha" in html_lower:
+            print(f"   ⚠️  hCaptcha detected!")
+        if "cloudflare" in html_lower:
+            print(f"   ⚠️  Cloudflare protection detected!")
+        
+        # Show preview of HTML
+        preview = html[:500].replace('\n', ' ').strip()
+        print(f"   HTML preview: {preview}...")
+        print()
+    
+    # Check if content seems suspiciously small (might be blocked)
+    if len(html) < 5000 and status_code == 200:
+        print(f"⚠️  SUSPICIOUSLY SMALL HTML for {url}:")
+        print(f"   Status: {status_code}, HTML length: {len(html)} bytes")
+        print(f"   This might indicate content blocking or captcha page")
+        preview = html[:500].replace('\n', ' ').strip()
+        print(f"   Preview: {preview}...")
+        print()
+    
+    # Check for error status codes that might indicate blocking
+    if status_code in [403, 429, 503]:
+        print(f"⚠️  HTTP ERROR for {url}:")
+        print(f"   Status code: {status_code}")
+        if status_code == 403:
+            print(f"   This usually means access forbidden - check IP whitelisting")
+        elif status_code == 429:
+            print(f"   Rate limit exceeded - try reducing batch_size or adding delays")
+        elif status_code == 503:
+            print(f"   Service unavailable - might be blocking bots")
+        print()
+
+
+def get_captcha_detection_js():
+    """Return JavaScript code that detects captcha elements and logs them."""
+    return """
+    (async () => {
+        // Common captcha indicators
+        const captchaSelectors = [
+            '#captcha',
+            '.captcha',
+            '[id*="captcha"]',
+            '[class*="captcha"]',
+            '[id*="recaptcha"]',
+            '[class*="recaptcha"]',
+            '[id*="hcaptcha"]',
+            '[class*="hcaptcha"]',
+            'iframe[src*="recaptcha"]',
+            'iframe[src*="hcaptcha"]',
+            '[data-sitekey]', // reCAPTCHA sitekey
+        ];
+        
+        const captchaElements = [];
+        captchaSelectors.forEach(selector => {
+            try {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    captchaElements.push({
+                        selector: selector,
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        visible: style.display !== 'none' && style.visibility !== 'hidden',
+                        text: el.textContent?.substring(0, 100) || ''
+                    });
+                });
+            } catch (e) {
+                // Ignore selector errors
+            }
+        });
+        
+        // Check page title and body text for captcha keywords
+        const pageText = document.body?.textContent?.toLowerCase() || '';
+        const captchaKeywords = [
+            'captcha', 
+            'verify you are human', 
+            'robot', 
+            'challenge',
+            'checking your browser',
+            'just a moment',
+            'ddos protection'
+        ];
+        const foundKeywords = captchaKeywords.filter(keyword => pageText.includes(keyword));
+        
+        // Log findings
+        if (captchaElements.length > 0 || foundKeywords.length > 0) {
+            console.log('🚨 CAPTCHA DETECTED:', {
+                elements: captchaElements,
+                keywords: foundKeywords,
+                pageTitle: document.title,
+                url: window.location.href
+            });
+        }
+        
+        return {
+            captchaFound: captchaElements.length > 0 || foundKeywords.length > 0,
+            elements: captchaElements,
+            keywords: foundKeywords
+        };
+    })();
+    """
+
+
+def get_ip_check_js():
+    """Return JavaScript code that checks the IP address the site sees."""
+    return """
+    (async () => {
+        try {
+            // Try to get IP from a service
+            const response = await fetch('https://api.ipify.org?format=json');
+            const data = await response.json();
+            console.log('🌐 Browser-detected IP:', data.ip);
+            return data.ip;
+        } catch (e) {
+            console.log('Could not detect IP:', e);
+            return null;
+        }
+    })();
+    """
 
 
 def get_progressive_scroll_js():
