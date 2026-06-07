@@ -28,7 +28,10 @@ class CrawlerConfig:
     )
     excluded_paths: List[str] = field(default_factory=list)
     exclude_hidden_elements: bool = True
-    delay_before_return_html: int = 3
+    delay_before_return_html: int = 5
+    # Extra wait (seconds) on the first/root fetch so JS anti-bot challenges
+    # (e.g. SiteGround's "Robot Challenge Screen") can resolve and reload.
+    challenge_wait: int = 12
 
     # Validation parameters
     expected_chunks: int = 0  # 0 means no validation
@@ -83,10 +86,30 @@ class CrawlerConfig:
 
     # Browser configuration
     browser_type: str = "chromium"
-    headless: bool = True
-    light_mode: bool = True
-    text_mode: bool = True
+    # Launch a real Chrome channel ("chrome") rather than bundled Chromium —
+    # passes JS anti-bot challenges far more reliably. Set to "chromium" on
+    # headless servers (e.g. Render) that don't have Chrome installed.
+    browser_channel: str = "chrome"
+    headless: bool = False
+    # light_mode / text_mode strip browser features and produce a bot-like
+    # fingerprint that anti-bot challenges flag — keep them off for crawling.
+    light_mode: bool = False
+    text_mode: bool = False
     ignore_https_errors: bool = True
+    # Anti-bot / stealth. magic enables crawl4ai's evasion bundle; the other
+    # two patch navigator props and emulate human interaction.
+    magic: bool = True
+    simulate_user: bool = True
+    override_navigator: bool = True
+    # A SINGLE fixed User-Agent for the whole session. With magic=True crawl4ai
+    # otherwise generates a NEW random UA on every request, which breaks anti-bot
+    # clearance cookies (SiteGround binds clearance to the UA) and causes
+    # intermittent 403s. Keep it consistent. Override per-environment via
+    # USER_AGENT env (e.g. a Linux Chrome UA on a Linux server).
+    user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+    )
 
     # Output directories
     output_dir: str = "cleaned_output"
@@ -205,6 +228,32 @@ class CrawlerConfig:
         # Browser configuration
         if "BROWSER_TYPE" in os.environ:
             config.browser_type = os.environ["BROWSER_TYPE"]
+
+        if "BROWSER_CHANNEL" in os.environ:
+            config.browser_channel = os.environ["BROWSER_CHANNEL"]
+
+        if "CHALLENGE_WAIT" in os.environ:
+            config.challenge_wait = int(os.environ["CHALLENGE_WAIT"])
+
+        if "MAGIC" in os.environ:
+            config.magic = os.environ["MAGIC"].lower() in ["true", "1", "yes"]
+
+        if "SIMULATE_USER" in os.environ:
+            config.simulate_user = os.environ["SIMULATE_USER"].lower() in [
+                "true",
+                "1",
+                "yes",
+            ]
+
+        if "OVERRIDE_NAVIGATOR" in os.environ:
+            config.override_navigator = os.environ["OVERRIDE_NAVIGATOR"].lower() in [
+                "true",
+                "1",
+                "yes",
+            ]
+
+        if "USER_AGENT" in os.environ:
+            config.user_agent = os.environ["USER_AGENT"]
 
         if "HEADLESS" in os.environ:
             config.headless = os.environ["HEADLESS"].lower() in ["true", "1", "yes"]

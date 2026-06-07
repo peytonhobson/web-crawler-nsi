@@ -48,7 +48,13 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        delay_before_return_html=config.delay_before_return_html,
+        # Longer wait on the root fetch so a JS anti-bot challenge can solve,
+        # set its clearance cookie, and reload to the real page before capture.
+        delay_before_return_html=config.challenge_wait,
+        magic=config.magic,
+        simulate_user=config.simulate_user,
+        override_navigator=config.override_navigator,
+        user_agent=config.user_agent,
         process_iframes=True,  # Process content within iframes
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
@@ -81,6 +87,10 @@ async def crawl(config: CrawlerConfig = None):
         exclude_external_images=True,
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
+        magic=config.magic,
+        simulate_user=config.simulate_user,
+        override_navigator=config.override_navigator,
+        user_agent=config.user_agent,
         process_iframes=True,  # Process content within iframes
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
@@ -101,6 +111,10 @@ async def crawl(config: CrawlerConfig = None):
         exclude_external_images=True,
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
+        magic=config.magic,
+        simulate_user=config.simulate_user,
+        override_navigator=config.override_navigator,
+        user_agent=config.user_agent,
         process_iframes=True,  # Process content within iframes
         remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
@@ -117,10 +131,13 @@ async def crawl(config: CrawlerConfig = None):
 
     browser_config = BrowserConfig(
         browser_type=config.browser_type,
+        chrome_channel=config.browser_channel,
+        channel=config.browser_channel,
         headless=config.headless,
         light_mode=config.light_mode,
         text_mode=config.text_mode,
         ignore_https_errors=config.ignore_https_errors,
+        user_agent=config.user_agent,
     )
 
     start_urls = config.start_urls
@@ -265,14 +282,23 @@ async def crawl(config: CrawlerConfig = None):
         url = getattr(res, "url", "NO_URL")
         print(f"  Result {i}: URL={url}, Status={status}")
 
-    # Accept all 2xx success codes (200, 201, 202, 204, 206, etc.)
-    valid_pages = [
-        res
-        for res in all_results
-        if hasattr(res, "status_code")
-        and res.status_code is not None
-        and 200 <= res.status_code <= 301
-    ]
+    # Accept all 2xx/301 success codes, OR pages that carry real content despite
+    # an anomalous status. Some anti-bot WAFs (e.g. SiteGround) serve the real
+    # page with a 403/202 after the JS challenge clears — keep those, but still
+    # reject genuine block/challenge pages.
+    valid_pages = []
+    for res in all_results:
+        status = getattr(res, "status_code", None)
+        if status is None:
+            continue
+        if 200 <= status <= 301:
+            valid_pages.append(res)
+        elif has_real_content(res):
+            print(
+                f"⚠️  Keeping {getattr(res, 'url', '?')} despite status {status}: "
+                f"real content detected (anti-bot WAF likely)"
+            )
+            valid_pages.append(res)
     print(f"Debug: After status filtering: {len(valid_pages)} valid pages")
 
     print("Post-processing results to remove links...")
@@ -335,6 +361,40 @@ async def crawl(config: CrawlerConfig = None):
     print(f"✅ Crawling complete! Processed {len(final_results)} unique pages")
 
     return final_results  # Return the processed results
+
+
+BLOCK_PAGE_MARKERS = [
+    "sgchallenge",
+    "robot challenge",
+    ".well-known/captcha",
+    "checking your browser",
+    "just a moment",
+    "attention required",
+    "access denied",
+    "you have been blocked",
+    "ddos protection",
+]
+
+# Minimum HTML size for a non-2xx page to be treated as real content rather
+# than a block page. The SiteGround challenge screen is ~12KB; real pages are
+# much larger.
+MIN_REAL_CONTENT_BYTES = 20000
+
+
+def is_block_page(html):
+    """Return True if the HTML looks like an anti-bot challenge or block page."""
+    low = (html or "").lower()
+    return any(marker in low for marker in BLOCK_PAGE_MARKERS)
+
+
+def has_real_content(result):
+    """Return True if a result carries substantial real content (not a block page).
+
+    Used to keep pages that an anti-bot WAF serves with an anomalous status code
+    (e.g. 403/202) after a JS challenge has cleared.
+    """
+    html = getattr(result, "html", "") or ""
+    return len(html) >= MIN_REAL_CONTENT_BYTES and not is_block_page(html)
 
 
 def check_captcha_indicators(result, url):
