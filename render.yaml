@@ -45,6 +45,15 @@ services:
         sync: false
       - key: PINECONE_INDEX_NAME
         sync: false
+      # Upstash Vector dual-write target (one shared index, namespace per
+      # company). Set in the dashboard. UPSTASH_NAMESPACE defaults to
+      # PINECONE_INDEX_NAME when unset.
+      - key: UPSTASH_VECTOR_REST_URL
+        sync: false
+      - key: UPSTASH_VECTOR_REST_TOKEN
+        sync: false
+      - key: UPSTASH_NAMESPACE
+        sync: false
       - key: SENDGRID_API_KEY
         sync: false
       - key: EXPECTED_CHUNKS

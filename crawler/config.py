@@ -79,6 +79,9 @@ class CrawlerConfig:
     record_retention_hours: int = 1
     upsert_batch_size: int = 50
     delete_old_records: bool = True
+    # Upstash namespace (dual-write target during the Pinecone migration).
+    # Defaults to the Pinecone index name when unset, so each company maps 1:1.
+    upstash_namespace: str = None
 
     # Processing control
     dry_run: bool = False
@@ -180,6 +183,9 @@ class CrawlerConfig:
                 "1",
                 "yes",
             ]
+
+        if "UPSTASH_NAMESPACE" in os.environ:
+            config.upstash_namespace = os.environ["UPSTASH_NAMESPACE"]
 
         if "DRY_RUN" in os.environ:
             config.dry_run = os.environ["DRY_RUN"].lower() in ["true", "1", "yes"]
