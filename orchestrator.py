@@ -11,7 +11,7 @@ from sendgrid.helpers.mail import Mail, Email, Content
 from crawler.crawl import crawl
 from chunk_content import chunk_content
 from summary import summarize_content
-from vectordb.pinecone import upload_chunks
+from vectordb.upload import upload_chunks
 from crawler.config import CrawlerConfig
 
 # Create logs directory if it doesn't exist
