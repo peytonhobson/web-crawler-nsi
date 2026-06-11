@@ -5,22 +5,14 @@ services:
     name: web-crawler
     plan: standard
     env: python
-    buildCommand: |
-      # Install dependencies
-      pip install -r requirements.txt
-      pip install -e .
-      
-      # Install Playwright with only Chromium
-      pip install playwright
-      
-      # Set Playwright browsers path to Render-specific directory
-      export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/playwright
-      python -m playwright install chromium
+    buildCommand: python3 -m pip install -r requirements.txt && python3 -m pip install -e . && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/playwright python3 -m playwright install chromium
     startCommand: python orchestrator.py
     schedule: "0 9 * * *"  # Run at 9 AM UTC every 2 days
     envVars:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "/opt/render/project/playwright"
+      - key: HEADLESS
+        value: "true"
       # Secret environment variables - set in Render dashboard
       - key: OPENAI_API_KEY
         sync: false

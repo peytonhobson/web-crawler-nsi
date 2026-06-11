@@ -107,6 +107,10 @@ async def crawl(config: CrawlerConfig = None):
         ignore_https_errors=config.ignore_https_errors,
         enable_stealth=True
     )
+    # crawl4ai 0.6.x defaults chrome_channel="chromium" which Playwright
+    # treats as a channel lookup and falls back to system Chrome. Clear it
+    # so Playwright uses the managed playwright-chromium instead.
+    browser_config.chrome_channel = ""
 
     start_urls = config.start_urls
 
