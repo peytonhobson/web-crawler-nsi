@@ -17,26 +17,20 @@ Usage:
     python upload_to_pinecone_new.py [--dry-run] [--input-dir DIRECTORY]
 """
 
-import os
-import sys
 import logging
 import time
 from datetime import datetime, timedelta
 import re
-from dotenv import load_dotenv
 
-# Import from the pinecone.control module where the Pinecone class is defined
 from pinecone import Pinecone
 import unicodedata
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+from vectordb.base import VectorDBUploader
+
 logger = logging.getLogger(__name__)
 
 
-class PineconeUploader:
+class PineconeUploader(VectorDBUploader):
     """
     Handles connecting to Pinecone, uploading new records using integrated
     inference, and deleting outdated web-scraped records by wiping the
@@ -304,54 +298,3 @@ class PineconeUploader:
             raise
 
 
-def upload_chunks(chunks, config=None):
-    """
-    Upload chunks to Pinecone vector database.
-
-    Args:
-        chunks: List of chunks to upload
-        config: Optional configuration object
-    """
-    load_dotenv(override=True)
-    # Validate required environment variables.
-    required_vars = ["PINECONE_API_KEY", "PINECONE_INDEX_NAME"]
-    missing = [var for var in required_vars if not os.getenv(var)]
-    if missing:
-        logger.error(f"Missing environment variables: {', '.join(missing)}")
-        sys.exit(1)
-
-    api_key = os.getenv("PINECONE_API_KEY")
-    index_name = os.getenv("PINECONE_INDEX_NAME")
-
-    # Get configuration from config object if provided
-    chunk_id_prefix = None
-    record_retention_hours = None
-    upsert_batch_size = None
-    delete_old_records = None
-
-    if config:
-        chunk_id_prefix = getattr(config, "chunk_id_prefix", None)
-        record_retention_hours = getattr(config, "record_retention_hours", None)
-        upsert_batch_size = getattr(config, "upsert_batch_size", None)
-        delete_old_records = getattr(config, "delete_old_records", None)
-
-    # Initialize the PineconeUploader instance with configuration
-    uploader = PineconeUploader(
-        api_key,
-        index_name,
-        chunk_id_prefix=chunk_id_prefix,
-        record_retention_hours=record_retention_hours,
-        upsert_batch_size=upsert_batch_size,
-        delete_old_records=delete_old_records,
-    )
-
-    deleted_count = uploader.delete_older_than_retention_period()
-    logger.info(f"Deleted {deleted_count} old records")
-
-    upserted_count = uploader.upsert_records(chunks)
-    logger.info(f"Upserted {upserted_count} records")
-
-    logger.info(
-        f"Operation complete: {upserted_count} records upserted, "
-        f"{deleted_count} old records deleted."
-    )
