@@ -105,12 +105,14 @@ async def crawl(config: CrawlerConfig = None):
         light_mode=config.light_mode,
         text_mode=config.text_mode,
         ignore_https_errors=config.ignore_https_errors,
-        enable_stealth=True
     )
     # crawl4ai 0.6.x defaults chrome_channel="chromium" which Playwright
     # treats as a channel lookup and falls back to system Chrome. Clear it
     # so Playwright uses the managed playwright-chromium instead.
     browser_config.chrome_channel = ""
+    # enable_stealth was removed in crawl4ai 0.7.x; force headless explicitly
+    # so any internal crawl4ai path can't override it.
+    browser_config.headless = True
 
     start_urls = config.start_urls
 
