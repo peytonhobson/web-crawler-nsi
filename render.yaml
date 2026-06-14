@@ -31,13 +31,6 @@ services:
         sync: false
       - key: START_URLS
         sync: false
-      - key: PINECONE_API_KEY
-        sync: false
-      - key: PINECONE_INDEX_NAME
-        sync: false
-      # Upstash Vector dual-write target (one shared index, namespace per
-      # company). Set in the dashboard. UPSTASH_NAMESPACE defaults to
-      # PINECONE_INDEX_NAME when unset.
       - key: UPSTASH_VECTOR_REST_URL
         sync: false
       - key: UPSTASH_VECTOR_REST_TOKEN
@@ -73,10 +66,6 @@ services:
   #     - key: OPENAI_API_KEY
   #       sync: false
   #     - key: START_URLS
-  #       sync: false
-  #     - key: PINECONE_API_KEY
-  #       sync: false
-  #     - key: PINECONE_INDEX_NAME
   #       sync: false
   #     - key: SENDGRID_API_KEY
   #       sync: false

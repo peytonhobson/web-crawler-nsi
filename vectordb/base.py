@@ -1,8 +1,5 @@
 """
 Shared interface for vector-database uploaders.
-
-Both the Pinecone and Upstash uploaders implement this interface so the
-dual-write coordinator in ``vectordb/upload.py`` can treat them uniformly.
 """
 
 from abc import ABC, abstractmethod
