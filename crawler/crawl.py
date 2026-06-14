@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import requests
 from urllib.parse import urlparse, urlunparse
 from crawl4ai import (
     AsyncWebCrawler,
@@ -58,8 +59,20 @@ async def crawl(config: CrawlerConfig = None):
         exclude_social_media_links=True,
         exclude_external_images=True,
         verbose=config.verbose,
-        delay_before_return_html=config.delay_before_return_html,
-        scan_full_page=True,
+        # Longer wait on the root fetch so a JS anti-bot challenge can solve,
+        # set its clearance cookie, and reload to the real page before capture.
+        delay_before_return_html=config.challenge_wait,
+        magic=config.magic,
+        simulate_user=config.simulate_user,
+        override_navigator=config.override_navigator,
+        user_agent=config.user_agent,
+        process_iframes=True,  # Process content within iframes
+        remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
+        js_code=[
+            get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+            get_captcha_detection_js(),  # Detect captcha elements
+            get_ip_check_js(),  # Check IP address
+        ],
         # Use a simpler markdown generator for link extraction
         markdown_generator=None,  # Use default simple markdown
         js_code=link_js_code,
@@ -87,8 +100,40 @@ async def crawl(config: CrawlerConfig = None):
         exclude_external_images=True,
         verbose=config.verbose,
         delay_before_return_html=config.delay_before_return_html,
-        scan_full_page=True,
+        magic=config.magic,
+        simulate_user=config.simulate_user,
+        override_navigator=config.override_navigator,
+        user_agent=config.user_agent,
+        process_iframes=True,  # Process content within iframes
+        remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
         js_code=[
+            get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+            get_captcha_detection_js(),  # Detect captcha elements
+            config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
+            get_dialogue_foundry_removal_js(),
+            get_universal_structure_fix_js(),
+            get_elementor_removal_js(config.excluded_elementor_types),
+        ],
+    )
+
+    # Crawler config for repeated elements to crawl once
+    crawler_config_repeated_elements = CrawlerRunConfig(
+        target_elements=config.excluded_tags,
+        markdown_generator=md_generator,
+        exclude_external_links=True,
+        exclude_social_media_links=True,
+        exclude_external_images=True,
+        verbose=config.verbose,
+        delay_before_return_html=config.delay_before_return_html,
+        magic=config.magic,
+        simulate_user=config.simulate_user,
+        override_navigator=config.override_navigator,
+        user_agent=config.user_agent,
+        process_iframes=True,  # Process content within iframes
+        remove_overlay_elements=True,  # Remove popups/overlays that block scrolling
+        js_code=[
+            get_progressive_scroll_js(),  # Progressive scrolling for lazy-loaded content
+            get_captcha_detection_js(),  # Detect captcha elements
             config.exclude_hidden_elements and get_hidden_elements_removal_js() or None,
             get_dialogue_foundry_removal_js(),
             get_universal_structure_fix_js(),
@@ -101,10 +146,13 @@ async def crawl(config: CrawlerConfig = None):
 
     browser_config = BrowserConfig(
         browser_type=config.browser_type,
+        chrome_channel=config.browser_channel,
+        channel=config.browser_channel,
         headless=config.headless,
         light_mode=config.light_mode,
         text_mode=config.text_mode,
         ignore_https_errors=config.ignore_https_errors,
+        user_agent=config.user_agent,
     )
     # crawl4ai 0.6.x defaults chrome_channel="chromium" which Playwright
     # treats as a channel lookup and falls back to system Chrome. Clear it
@@ -115,6 +163,15 @@ async def crawl(config: CrawlerConfig = None):
     browser_config.headless = True
 
     start_urls = config.start_urls
+
+    # Check outbound IP address for debugging
+    try:
+        ip_response = requests.get('https://api.ipify.org?format=json', timeout=5)
+        current_ip = ip_response.json().get('ip', 'Unknown')
+        print(f"🌐 Current outbound IP address: {current_ip}")
+        print(f"   Make sure this IP is whitelisted on the target site!")
+    except Exception as e:
+        print(f"⚠️  Could not determine outbound IP: {e}")
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         # If no specific start URLs are provided, use a default
@@ -132,6 +189,8 @@ async def crawl(config: CrawlerConfig = None):
             )
             for results in response:
                 for r in results:
+                    # Check for captcha indicators
+                    check_captcha_indicators(r, start_url)
                     # Debug: Print all link types found
                     print(f"Debug: All links found: {r.links}")
 
@@ -166,11 +225,16 @@ async def crawl(config: CrawlerConfig = None):
                         if not is_file_url(normalized_link):
                             print(f"Debug: Not a file URL: {normalized_link}")
                             if is_valid_web_url(normalized_link):
-                                print(
-                                    f"Debug: Valid web URL, adding: "
-                                    f"{normalized_link}"
-                                )
-                                unique_links.add(normalized_link)
+                                if should_exclude_path(
+                                    normalized_link, config.excluded_paths
+                                ):
+                                    print(f"Debug: Excluding path: {normalized_link}")
+                                else:
+                                    print(
+                                        f"Debug: Valid web URL, adding: "
+                                        f"{normalized_link}"
+                                    )
+                                    unique_links.add(normalized_link)
                             else:
                                 print(
                                     f"Debug: Invalid web URL, skipping: "
@@ -185,6 +249,10 @@ async def crawl(config: CrawlerConfig = None):
         async def crawl_url(url):
             try:
                 results = await crawler.arun(url, config=crawler_config)
+                # Check for captcha on each page
+                if results:
+                    for result in results:
+                        check_captcha_indicators(result, url)
                 print(f"Completed: {url}")
                 return results
             except Exception as e:
@@ -216,6 +284,18 @@ async def crawl(config: CrawlerConfig = None):
 
             print(f"Completed batch {batch_num + 1}/{total_batches}")
 
+        for start_url in start_urls:
+            results = await crawler.arun(
+                start_url, config=crawler_config_repeated_elements
+            )
+            # Check for captcha
+            if results:
+                for result in results:
+                    check_captcha_indicators(result, start_url)
+            results.url = "repeated_elements"
+            all_results.append(results)
+
+
     print(f"Crawling complete. Retrieved {len(all_results)} results.")
 
     # Debug: Check status codes of all results
@@ -225,14 +305,23 @@ async def crawl(config: CrawlerConfig = None):
         url = getattr(res, "url", "NO_URL")
         print(f"  Result {i}: URL={url}, Status={status}")
 
-    # Accept all 2xx success codes (200, 201, 202, 204, 206, etc.)
-    valid_pages = [
-        res
-        for res in all_results
-        if hasattr(res, "status_code")
-        and res.status_code is not None
-        and 200 <= res.status_code <= 301
-    ]
+    # Accept all 2xx/301 success codes, OR pages that carry real content despite
+    # an anomalous status. Some anti-bot WAFs (e.g. SiteGround) serve the real
+    # page with a 403/202 after the JS challenge clears — keep those, but still
+    # reject genuine block/challenge pages.
+    valid_pages = []
+    for res in all_results:
+        status = getattr(res, "status_code", None)
+        if status is None:
+            continue
+        if 200 <= status <= 301:
+            valid_pages.append(res)
+        elif has_real_content(res):
+            print(
+                f"⚠️  Keeping {getattr(res, 'url', '?')} despite status {status}: "
+                f"real content detected (anti-bot WAF likely)"
+            )
+            valid_pages.append(res)
     print(f"Debug: After status filtering: {len(valid_pages)} valid pages")
 
     print("Post-processing results to remove links...")
@@ -295,6 +384,240 @@ async def crawl(config: CrawlerConfig = None):
     print(f"✅ Crawling complete! Processed {len(final_results)} unique pages")
 
     return final_results  # Return the processed results
+
+
+BLOCK_PAGE_MARKERS = [
+    "sgchallenge",
+    "robot challenge",
+    ".well-known/captcha",
+    "checking your browser",
+    "just a moment",
+    "attention required",
+    "access denied",
+    "you have been blocked",
+    "ddos protection",
+]
+
+# Minimum HTML size for a non-2xx page to be treated as real content rather
+# than a block page. The SiteGround challenge screen is ~12KB; real pages are
+# much larger.
+MIN_REAL_CONTENT_BYTES = 20000
+
+
+def is_block_page(html):
+    """Return True if the HTML looks like an anti-bot challenge or block page."""
+    low = (html or "").lower()
+    return any(marker in low for marker in BLOCK_PAGE_MARKERS)
+
+
+def has_real_content(result):
+    """Return True if a result carries substantial real content (not a block page).
+
+    Used to keep pages that an anti-bot WAF serves with an anomalous status code
+    (e.g. 403/202) after a JS challenge has cleared.
+    """
+    html = getattr(result, "html", "") or ""
+    return len(html) >= MIN_REAL_CONTENT_BYTES and not is_block_page(html)
+
+
+def check_captcha_indicators(result, url):
+    """
+    Check HTML content for captcha indicators and log warnings.
+    
+    Args:
+        result: Crawler result object
+        url: URL that was crawled
+    """
+    html = result.html if hasattr(result, 'html') and result.html else ""
+    status_code = getattr(result, 'status_code', None)
+    
+    if not html:
+        print(f"⚠️  No HTML content for {url} (Status: {status_code})")
+        return
+    
+    html_lower = html.lower()
+    captcha_indicators = [
+        "captcha",
+        "recaptcha",
+        "hcaptcha",
+        "verify you are human",
+        "challenge",
+        "cloudflare",
+        "checking your browser",
+        "just a moment",
+        "ddos protection",
+        "access denied",
+    ]
+    
+    found_indicators = [ind for ind in captcha_indicators if ind in html_lower]
+    
+    if found_indicators:
+        print(f"\n🚨 CAPTCHA WARNING for {url}:")
+        print(f"   Status code: {status_code}")
+        print(f"   Found indicators: {', '.join(found_indicators)}")
+        print(f"   HTML length: {len(html)} bytes")
+        
+        # Check for specific captcha elements
+        if "recaptcha" in html_lower:
+            print(f"   ⚠️  reCAPTCHA detected!")
+        if "hcaptcha" in html_lower:
+            print(f"   ⚠️  hCaptcha detected!")
+        if "cloudflare" in html_lower:
+            print(f"   ⚠️  Cloudflare protection detected!")
+        
+        # Show preview of HTML
+        preview = html[:500].replace('\n', ' ').strip()
+        print(f"   HTML preview: {preview}...")
+        print()
+    
+    # Check if content seems suspiciously small (might be blocked)
+    if len(html) < 5000 and status_code == 200:
+        print(f"⚠️  SUSPICIOUSLY SMALL HTML for {url}:")
+        print(f"   Status: {status_code}, HTML length: {len(html)} bytes")
+        print(f"   This might indicate content blocking or captcha page")
+        preview = html[:500].replace('\n', ' ').strip()
+        print(f"   Preview: {preview}...")
+        print()
+    
+    # Check for error status codes that might indicate blocking
+    if status_code in [403, 429, 503]:
+        print(f"⚠️  HTTP ERROR for {url}:")
+        print(f"   Status code: {status_code}")
+        if status_code == 403:
+            print(f"   This usually means access forbidden - check IP whitelisting")
+        elif status_code == 429:
+            print(f"   Rate limit exceeded - try reducing batch_size or adding delays")
+        elif status_code == 503:
+            print(f"   Service unavailable - might be blocking bots")
+        print()
+
+
+def get_captcha_detection_js():
+    """Return JavaScript code that detects captcha elements and logs them."""
+    return """
+    (async () => {
+        // Common captcha indicators
+        const captchaSelectors = [
+            '#captcha',
+            '.captcha',
+            '[id*="captcha"]',
+            '[class*="captcha"]',
+            '[id*="recaptcha"]',
+            '[class*="recaptcha"]',
+            '[id*="hcaptcha"]',
+            '[class*="hcaptcha"]',
+            'iframe[src*="recaptcha"]',
+            'iframe[src*="hcaptcha"]',
+            '[data-sitekey]', // reCAPTCHA sitekey
+        ];
+        
+        const captchaElements = [];
+        captchaSelectors.forEach(selector => {
+            try {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    captchaElements.push({
+                        selector: selector,
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        visible: style.display !== 'none' && style.visibility !== 'hidden',
+                        text: el.textContent?.substring(0, 100) || ''
+                    });
+                });
+            } catch (e) {
+                // Ignore selector errors
+            }
+        });
+        
+        // Check page title and body text for captcha keywords
+        const pageText = document.body?.textContent?.toLowerCase() || '';
+        const captchaKeywords = [
+            'captcha', 
+            'verify you are human', 
+            'robot', 
+            'challenge',
+            'checking your browser',
+            'just a moment',
+            'ddos protection'
+        ];
+        const foundKeywords = captchaKeywords.filter(keyword => pageText.includes(keyword));
+        
+        // Log findings
+        if (captchaElements.length > 0 || foundKeywords.length > 0) {
+            console.log('🚨 CAPTCHA DETECTED:', {
+                elements: captchaElements,
+                keywords: foundKeywords,
+                pageTitle: document.title,
+                url: window.location.href
+            });
+        }
+        
+        return {
+            captchaFound: captchaElements.length > 0 || foundKeywords.length > 0,
+            elements: captchaElements,
+            keywords: foundKeywords
+        };
+    })();
+    """
+
+
+def get_ip_check_js():
+    """Return JavaScript code that checks the IP address the site sees."""
+    return """
+    (async () => {
+        try {
+            // Try to get IP from a service
+            const response = await fetch('https://api.ipify.org?format=json');
+            const data = await response.json();
+            console.log('🌐 Browser-detected IP:', data.ip);
+            return data.ip;
+        } catch (e) {
+            console.log('Could not detect IP:', e);
+            return null;
+        }
+    })();
+    """
+
+
+def get_progressive_scroll_js():
+    """Return JavaScript code that progressively scrolls the page to load lazy content.
+    
+    This script scrolls the page in increments, waiting for content to load at each step.
+    It's more effective than scan_full_page for sites with lazy-loaded content.
+    """
+    return """
+    (async () => {
+        const scrollDelay = 500; // Wait 500ms between scrolls
+        const maxScrolls = 20; // Maximum number of scroll attempts
+        
+        let lastHeight = document.body.scrollHeight;
+        let scrollCount = 0;
+        
+        while (scrollCount < maxScrolls) {
+            // Scroll to bottom
+            window.scrollTo(0, document.body.scrollHeight);
+            
+            // Wait for content to load
+            await new Promise(resolve => setTimeout(resolve, scrollDelay));
+            
+            // Check if new content loaded
+            let newHeight = document.body.scrollHeight;
+            if (newHeight === lastHeight) {
+                // No new content, try a few more times to be sure
+                if (scrollCount > 2) break;
+            }
+            
+            lastHeight = newHeight;
+            scrollCount++;
+        }
+        
+        // Scroll back to top for complete capture
+        window.scrollTo(0, 0);
+        await new Promise(resolve => setTimeout(resolve, 200));
+    })();
+    """
 
 
 def get_hidden_elements_removal_js():
@@ -540,6 +863,26 @@ def normalize_url(url):
         )
     )
     return normalized
+
+
+def should_exclude_path(url, excluded_paths):
+    """
+    Check if a URL should be excluded based on excluded paths.
+
+    Args:
+        url (str): The URL to check
+        excluded_paths (List[str]): List of path patterns to exclude
+
+    Returns:
+        bool: True if URL should be excluded, False otherwise
+    """
+    if not excluded_paths:
+        return False
+
+    for excluded_path in excluded_paths:
+        if excluded_path in url:
+            return True
+    return False
 
 
 def is_file_url(url):

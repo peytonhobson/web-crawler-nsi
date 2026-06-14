@@ -131,29 +131,35 @@ def remove_web_page_links(results):
 
 def remove_all_markdown_links(results):
     """
-    Remove all markdown links from all documents, preserving only the link text.
-
-    This is the original function kept for backward compatibility.
+    Remove all markdown links and images from all documents, preserving only the link
+    text for regular links and removing images entirely.
 
     Args:
         results (list): List of crawler result objects
 
     Returns:
-        list: Processed results with all links removed, only text preserved
+        list: Processed results with all links and images removed
     """
     processed_results = []
 
-    # Regular expression to identify markdown links
-    # This matches exactly [text](url) format
-    link_pattern = re.compile(r"\[(.*?)\]\((.*?)\)")
+    # Regular expression to identify markdown links and images
+    # This matches both [text](url) and ![alt](url) formats
+    link_pattern = re.compile(r"!?\[(.*?)\]\((.*?)\)")
 
     for result in results:
         if not hasattr(result, "markdown") or not result.markdown:
             processed_results.append(result)
             continue
 
-        # Replace all links with just their text content
-        modified_content = link_pattern.sub(r"\1", result.markdown)
+        def replace_link_or_image(match):
+            full_match = match.group(0)
+            text_content = match.group(1)
+            if full_match.startswith('!'):
+                return ""
+            else:
+                return text_content
+
+        modified_content = link_pattern.sub(replace_link_or_image, result.markdown)
 
         # Update the markdown content
         result.markdown = modified_content

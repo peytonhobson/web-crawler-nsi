@@ -29,8 +29,12 @@ class CrawlerConfig:
     excluded_elementor_types: List[str] = field(
         default_factory=lambda: ["header", "footer"]
     )
+    excluded_paths: List[str] = field(default_factory=list)
     exclude_hidden_elements: bool = True
-    delay_before_return_html: int = 3
+    delay_before_return_html: int = 5
+    # Extra wait (seconds) on the first/root fetch so JS anti-bot challenges
+    # (e.g. SiteGround's "Robot Challenge Screen") can resolve and reload.
+    challenge_wait: int = 12
 
     # Infinite scroll configuration
     enable_infinite_scroll: bool = True
@@ -91,10 +95,14 @@ class CrawlerConfig:
 
     # Browser configuration
     browser_type: str = "chromium"
+    browser_channel: str = "chrome"
     headless: bool = True
-    light_mode: bool = False  # Enable full features for JS execution
-    text_mode: bool = False  # Enable images/content for proper infinite scroll
+    light_mode: bool = False
+    text_mode: bool = False
     ignore_https_errors: bool = True
+    magic: bool = True
+    simulate_user: bool = True
+    override_navigator: bool = True
     user_agent: str = "UntapAI-Crawler"
 
     # Output directories
@@ -192,10 +200,17 @@ class CrawlerConfig:
                     os.environ["EXCLUDED_ELEMENTOR_TYPES"]
                 )
             except json.JSONDecodeError:
-                # Fallback to comma-separated string
                 config.excluded_elementor_types = [
                     tag.strip()
                     for tag in os.environ["EXCLUDED_ELEMENTOR_TYPES"].split(",")
+                ]
+
+        if "EXCLUDED_PATHS" in os.environ:
+            try:
+                config.excluded_paths = json.loads(os.environ["EXCLUDED_PATHS"])
+            except json.JSONDecodeError:
+                config.excluded_paths = [
+                    path.strip() for path in os.environ["EXCLUDED_PATHS"].split(",")
                 ]
 
         # Directory settings
@@ -220,6 +235,32 @@ class CrawlerConfig:
         # Browser configuration
         if "BROWSER_TYPE" in os.environ:
             config.browser_type = os.environ["BROWSER_TYPE"]
+
+        if "BROWSER_CHANNEL" in os.environ:
+            config.browser_channel = os.environ["BROWSER_CHANNEL"]
+
+        if "CHALLENGE_WAIT" in os.environ:
+            config.challenge_wait = int(os.environ["CHALLENGE_WAIT"])
+
+        if "MAGIC" in os.environ:
+            config.magic = os.environ["MAGIC"].lower() in ["true", "1", "yes"]
+
+        if "SIMULATE_USER" in os.environ:
+            config.simulate_user = os.environ["SIMULATE_USER"].lower() in [
+                "true",
+                "1",
+                "yes",
+            ]
+
+        if "OVERRIDE_NAVIGATOR" in os.environ:
+            config.override_navigator = os.environ["OVERRIDE_NAVIGATOR"].lower() in [
+                "true",
+                "1",
+                "yes",
+            ]
+
+        if "USER_AGENT" in os.environ:
+            config.user_agent = os.environ["USER_AGENT"]
 
         if "HEADLESS" in os.environ:
             config.headless = os.environ["HEADLESS"].lower() in ["true", "1", "yes"]
