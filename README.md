@@ -167,7 +167,7 @@ python orchestrator.py
 
 ### Running in Dry-Run Mode
 
-To save results locally without uploading to Pinecone:
+To save results locally without uploading to the vector store:
 
 ```bash
 # With Docker:
@@ -221,7 +221,7 @@ The orchestrator runs the complete pipeline:
 1. **Crawling**: Fetches content from specified URLs
 2. **Chunking**: Splits content into manageable chunks
 3. **Summarization**: Processes chunks and extracts keywords
-4. **Vector DB Upload**: Uploads processed content to Pinecone (or saves locally in dry-run mode)
+4. **Vector DB Upload**: Uploads processed content to Upstash Vector (or saves locally in dry-run mode)
 
 ## Usage
 

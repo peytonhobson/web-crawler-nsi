@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """
-Vector-store upload coordinator.
-
-During the Pinecone -> Upstash migration this dual-writes every crawl to both
-stores. Pinecone remains the source of truth (its failures propagate and abort
-the run); Upstash writes are best-effort (failures are logged but never fail the
-crawl). Upstash is only attempted when its credentials are present.
-
-Once the migration is complete, drop the Pinecone branch and keep Upstash only.
+Vector-store upload coordinator. Uploads crawled chunks to Upstash Vector.
 """
 
 import logging
@@ -15,7 +8,6 @@ import os
 import sys
 from dotenv import load_dotenv
 
-from vectordb.pinecone import PineconeUploader
 from vectordb.upstash import UpstashUploader
 
 logger = logging.getLogger(__name__)
@@ -36,7 +28,7 @@ def _vector_db_kwargs(config):
 
 
 def _run(uploader, chunks, label):
-    """Delete stale records then upsert the fresh batch, mirroring prior behavior."""
+    """Delete stale records then upsert the fresh batch."""
     deleted_count = uploader.delete_older_than_retention_period()
     logger.info(f"[{label}] Deleted {deleted_count} old records")
 
@@ -51,7 +43,7 @@ def _run(uploader, chunks, label):
 
 def upload_chunks(chunks, config=None):
     """
-    Upload chunks to the configured vector store(s).
+    Upload chunks to Upstash Vector.
 
     Args:
         chunks: List of chunks to upload
@@ -61,47 +53,24 @@ def upload_chunks(chunks, config=None):
 
     kwargs = _vector_db_kwargs(config)
 
-    # --- Pinecone: source of truth, failures abort the run ---
-    required_vars = ["PINECONE_API_KEY", "PINECONE_INDEX_NAME"]
+    required_vars = ["UPSTASH_VECTOR_REST_URL", "UPSTASH_VECTOR_REST_TOKEN"]
     missing = [var for var in required_vars if not os.getenv(var)]
     if missing:
         logger.error(f"Missing environment variables: {', '.join(missing)}")
         sys.exit(1)
 
-    index_name = os.getenv("PINECONE_INDEX_NAME")
-    pinecone_uploader = PineconeUploader(
-        os.getenv("PINECONE_API_KEY"),
-        index_name,
-        **kwargs,
-    )
-    _run(pinecone_uploader, chunks, "pinecone")
-
-    # --- Upstash: best-effort dual-write, never fails the crawl ---
-    upstash_url = os.getenv("UPSTASH_VECTOR_REST_URL")
-    upstash_token = os.getenv("UPSTASH_VECTOR_REST_TOKEN")
-    if not (upstash_url and upstash_token):
-        logger.info(
-            "Upstash not configured (UPSTASH_VECTOR_REST_URL / "
-            "UPSTASH_VECTOR_REST_TOKEN unset); skipping dual-write."
-        )
-        return
-
-    # One shared Upstash index, one namespace per company. Default the namespace
-    # to the Pinecone index name so each company maps 1:1 without extra config.
     namespace = (
         getattr(config, "upstash_namespace", None) if config else None
-    ) or os.getenv("UPSTASH_NAMESPACE") or index_name
+    ) or os.getenv("UPSTASH_NAMESPACE")
 
-    try:
-        upstash_uploader = UpstashUploader(
-            upstash_url,
-            upstash_token,
-            namespace,
-            **kwargs,
-        )
-        _run(upstash_uploader, chunks, "upstash")
-    except Exception as e:
-        logger.error(
-            f"[upstash] dual-write failed (continuing; Pinecone is source "
-            f"of truth): {e}"
-        )
+    if not namespace:
+        logger.error("UPSTASH_NAMESPACE must be set")
+        sys.exit(1)
+
+    upstash_uploader = UpstashUploader(
+        os.getenv("UPSTASH_VECTOR_REST_URL"),
+        os.getenv("UPSTASH_VECTOR_REST_TOKEN"),
+        namespace,
+        **kwargs,
+    )
+    _run(upstash_uploader, chunks, "upstash")

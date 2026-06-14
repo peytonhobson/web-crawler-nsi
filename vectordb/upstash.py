@@ -2,13 +2,10 @@
 """
 Upstash Vector uploader.
 
-Mirrors ``PineconeUploader`` (vectordb/pinecone.py) but targets Upstash Vector.
-Like Pinecone's integrated inference, Upstash embeds raw text server-side when
-the index is created with a hosted embedding model, so we upsert the chunk text
-via the ``data`` field rather than precomputing vectors.
-
-Per-company data is isolated by namespace: one shared Upstash index, one
-namespace per company (the namespace mirrors the company's Pinecone index name).
+Upstash embeds raw text server-side when the index is created with a hosted
+embedding model, so we upsert the chunk text via the ``data`` field rather than
+precomputing vectors. Per-company data is isolated by namespace: one shared
+Upstash index, one namespace per company.
 """
 
 import logging
@@ -44,7 +41,7 @@ class UpstashUploader:
         Args:
             url: Upstash Vector REST URL
             token: Upstash Vector REST token
-            namespace: Per-company namespace (mirrors the Pinecone index name)
+            namespace: Per-company namespace
             chunk_id_prefix: Prefix for chunk IDs
             record_retention_hours: How many hours to keep old records before deletion
             upsert_batch_size: Number of records to upsert in each batch

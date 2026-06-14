@@ -79,8 +79,6 @@ class CrawlerConfig:
     record_retention_hours: int = 1
     upsert_batch_size: int = 50
     delete_old_records: bool = True
-    # Upstash namespace (dual-write target during the Pinecone migration).
-    # Defaults to the Pinecone index name when unset, so each company maps 1:1.
     upstash_namespace: str = None
 
     # Processing control
