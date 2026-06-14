@@ -11,14 +11,31 @@ services:
     envVars:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "/opt/render/project/playwright"
+      # --- Anti-bot / browser config (server-friendly overrides) ---
+      # Render is headless Linux with no real Chrome, so use bundled Chromium
+      # headless. Tested: headless Chromium + fixed UA + magic clears the
+      # SiteGround JS challenge on its own.
+      - key: HEADLESS
+        value: "true"
+      - key: BROWSER_CHANNEL
+        value: "chromium"
+      # Single fixed UA (Linux Chrome, matching the bundled Chromium 131). Must
+      # stay constant or anti-bot clearance cookies break across requests.
+      - key: USER_AGENT
+        value: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      # Seconds to wait on the root fetch for the JS challenge to resolve.
+      - key: CHALLENGE_WAIT
+        value: "12"
       # Secret environment variables - set in Render dashboard
       - key: OPENAI_API_KEY
         sync: false
       - key: START_URLS
         sync: false
-      - key: PINECONE_API_KEY
+      - key: UPSTASH_VECTOR_REST_URL
         sync: false
-      - key: PINECONE_INDEX_NAME
+      - key: UPSTASH_VECTOR_REST_TOKEN
+        sync: false
+      - key: UPSTASH_NAMESPACE
         sync: false
       # Upstash Vector dual-write target (one shared index, namespace per
       # company). Set in the dashboard. UPSTASH_NAMESPACE defaults to
@@ -34,3 +51,33 @@ services:
       - key: EXPECTED_CHUNKS
         value: 1
     autoDeploy: false
+
+  # --- Docker alternative -------------------------------------------------
+  # If the native Python env above fails to launch Chromium (missing system
+  # libraries), comment out the service above and uncomment this one. It uses
+  # the Dockerfile (official Playwright image with Chromium + all OS deps).
+  # Note: do NOT set PLAYWRIGHT_BROWSERS_PATH here — the image manages it.
+  #
+  # - type: cron
+  #   name: web-crawler
+  #   runtime: image
+  #   dockerfilePath: ./Dockerfile
+  #   schedule: "0 9 * * *"
+  #   envVars:
+  #     - key: HEADLESS
+  #       value: "true"
+  #     - key: BROWSER_CHANNEL
+  #       value: "chromium"
+  #     - key: USER_AGENT
+  #       value: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  #     - key: CHALLENGE_WAIT
+  #       value: "12"
+  #     - key: OPENAI_API_KEY
+  #       sync: false
+  #     - key: START_URLS
+  #       sync: false
+  #     - key: SENDGRID_API_KEY
+  #       sync: false
+  #     - key: EXPECTED_CHUNKS
+  #       value: 1
+  #   autoDeploy: false

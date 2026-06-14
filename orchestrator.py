@@ -46,7 +46,7 @@ def format_time(seconds):
 
 async def main(dry_run=False):
     """Main orchestrator function that runs crawler, chunking, summarization,
-    and Pinecone upload in sequence."""
+    and vector store upload in sequence."""
     try:
         # Start timing the entire process
         total_start_time = time.time()
@@ -92,11 +92,8 @@ async def main(dry_run=False):
             f"in {format_time(summary_time)}"
         )
 
-        # Get Pinecone index name from environment
-        pinecone_index = os.environ.get("PINECONE_INDEX_NAME", "unknown")
-
         if config.dry_run:
-            # Save the summarized results instead of uploading to Pinecone
+            # Save the summarized results instead of uploading to the vector store
             logger.info(f"Saving results to {config.output_dir} folder")
             save_start_time = time.time()
             save_results_to_folder(summarized_results, config.output_dir)
@@ -129,8 +126,7 @@ async def main(dry_run=False):
                         f"chunks, which is below the minimum threshold of "
                         f"{min_threshold:.0f} chunks ({threshold_pct:.0f}% of "
                         f"expected {config.expected_chunks}).\n\n"
-                        f"Pinecone index: {pinecone_index}\n\n"
-                        f"Pinecone upload has been skipped. Please review the "
+                        f"Upload has been skipped. Please review the "
                         f"crawler configuration and data sources."
                     )
                     send_email_notification(email_subject, email_message)
@@ -147,23 +143,21 @@ async def main(dry_run=False):
                         f"The web crawler processed {results_count} chunks, "
                         f"which exceeds the expected count of "
                         f"{config.expected_chunks}.\n\n"
-                        f"Pinecone index: {pinecone_index}\n\n"
-                        f"Pinecone upload will proceed normally, but you may "
+                        f"Upload will proceed normally, but you may "
                         f"want to review your crawler configuration to ensure "
                         f"it's working as intended."
                     )
                     send_email_notification(email_subject, email_message)
 
-            # Run Pinecone upload with configuration if validation passed
             if should_upload:
                 upload_start_time = time.time()
                 upload_chunks(summarized_results, config)
                 upload_time = time.time() - upload_start_time
                 logger.info(
-                    f"Upload to Pinecone completed in {format_time(upload_time)}"
+                    f"Upload completed in {format_time(upload_time)}"
                 )
             else:
-                logger.warning("Pinecone upload skipped due to validation failure")
+                logger.warning("Upload skipped due to validation failure")
 
         # Calculate and log the total execution time
         total_time = time.time() - total_start_time
@@ -190,15 +184,10 @@ async def main(dry_run=False):
         total_time = time.time() - total_start_time
         logger.error(f"Orchestration failed after {format_time(total_time)}: {str(e)}")
 
-        # Get Pinecone index name for error notification
-        pinecone_index = os.environ.get("PINECONE_INDEX_NAME", "unknown")
-
-        # Send email notification about the failure
         try:
             error_message = (
                 f"The web crawler orchestration process failed after "
                 f"{format_time(total_time)}.\n\n"
-                f"Pinecone index: {pinecone_index}\n\n"
                 f"Error: {str(e)}"
             )
             send_email_notification("Web Crawler Error: Process Failed", error_message)
@@ -302,7 +291,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Save results to folder instead of uploading to Pinecone",
+        help="Save results to folder instead of uploading to the vector store",
     )
     parser.add_argument(
         "--config",

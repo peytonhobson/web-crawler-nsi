@@ -129,7 +129,6 @@ The configuration system allows you to customize all aspects of the crawler's be
 - `CHUNK_SIZE`: Size of content chunks for vector storage
 - `CHUNK_OVERLAP_RATIO`: Overlap between chunks to maintain context
 - `SUMMARY_MODEL_NAME`: OpenAI model to use for summarization
-- `SUMMARY_TEMPERATURE`: Temperature setting for generation (lower = more deterministic)
 
 #### Vector Database
 - `CHUNK_ID_PREFIX`: Prefix for chunk IDs in vector database
@@ -168,7 +167,7 @@ python orchestrator.py
 
 ### Running in Dry-Run Mode
 
-To save results locally without uploading to Pinecone:
+To save results locally without uploading to the vector store:
 
 ```bash
 # With Docker:
@@ -222,7 +221,7 @@ The orchestrator runs the complete pipeline:
 1. **Crawling**: Fetches content from specified URLs
 2. **Chunking**: Splits content into manageable chunks
 3. **Summarization**: Processes chunks and extracts keywords
-4. **Vector DB Upload**: Uploads processed content to Pinecone (or saves locally in dry-run mode)
+4. **Vector DB Upload**: Uploads processed content to Upstash Vector (or saves locally in dry-run mode)
 
 ## Usage
 
